@@ -49,6 +49,10 @@ func addNewRecord(type_ int, id int, value int) {
 	}
 }
 
+func FlushBatchUpdates() {
+	batchUpdate()
+}
+
 func batchUpdate() {
 	// check if there's any data to update
 	hasData := false

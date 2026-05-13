@@ -2,13 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -30,6 +33,8 @@ import (
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	_ "net/http/pprof"
 )
@@ -203,10 +208,38 @@ func main() {
 	// Log startup success message
 	common.LogStartupSuccess(startTime, port)
 
-	err = server.Run(":" + port)
-	if err != nil {
-		common.FatalLog("failed to start HTTP server: " + err.Error())
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: h2c.NewHandler(server, &http2.Server{}),
 	}
+
+	gopool.Go(func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			common.FatalLog("failed to start HTTP server: " + err.Error())
+		}
+	})
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	common.SysLog("shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if common.BatchUpdateEnabled {
+		common.SysLog("flushing batch update cache...")
+		model.FlushBatchUpdates()
+	}
+	if common.DataExportEnabled {
+		common.SysLog("flushing quota data cache...")
+		model.SaveQuotaDataCache()
+	}
+
+	if err := srv.Shutdown(ctx); err != nil {
+		common.FatalLog("server forced to shutdown: " + err.Error())
+	}
+	common.SysLog("server exited")
 }
 
 func InjectUmamiAnalytics() {

@@ -20,11 +20,17 @@ import (
 )
 
 const (
-	ginKeyChannelAffinityCacheKey   = "channel_affinity_cache_key"
-	ginKeyChannelAffinityTTLSeconds = "channel_affinity_ttl_seconds"
-	ginKeyChannelAffinityMeta       = "channel_affinity_meta"
-	ginKeyChannelAffinityLogInfo    = "channel_affinity_log_info"
-	ginKeyChannelAffinitySkipRetry  = "channel_affinity_skip_retry_on_failure"
+	ginKeyChannelAffinityCacheKey        = "channel_affinity_cache_key"
+	ginKeyChannelAffinityTTLSeconds      = "channel_affinity_ttl_seconds"
+	ginKeyChannelAffinityMeta            = "channel_affinity_meta"
+	ginKeyChannelAffinityLogInfo         = "channel_affinity_log_info"
+	ginKeyChannelAffinitySkipRetry       = "channel_affinity_skip_retry_on_failure"
+	ginKeyChannelAffinityTransientRetries = "channel_affinity_transient_retries"
+
+	// MaxAffinityTransientRetries is the number of times a transient (network-level)
+	// error is tolerated before the affinity cache entry is invalidated and the next
+	// retry is allowed to pick a different channel.
+	MaxAffinityTransientRetries = 2
 
 	channelAffinityCacheNamespace           = "new-api:channel_affinity:v1"
 	channelAffinityUsageCacheStatsNamespace = "new-api:channel_affinity_usage_cache_stats:v1"
@@ -671,6 +677,79 @@ func AppendChannelAffinityAdminInfo(c *gin.Context, adminInfo map[string]interfa
 		return
 	}
 	adminInfo["channel_affinity"] = anyInfo
+}
+
+// isTransientAffinityError returns true for errors that are caused by transient
+// network/transport conditions rather than an explicit upstream rejection.
+// These errors are safe to retry on the same channel a limited number of times.
+func isTransientAffinityError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	switch err.GetErrorCode() {
+	case types.ErrorCodeDoRequestFailed,
+		types.ErrorCodeReadResponseBodyFailed,
+		types.ErrorCodeEmptyResponse,
+		types.ErrorCodeBadResponse:
+		return true
+	}
+	return false
+}
+
+// TryInvalidateChannelAffinityOnError decides whether to clear the affinity cache
+// based on the error type:
+//   - Upstream explicit rejection (non-transient): invalidate immediately.
+//   - Transient network error: allow up to MaxAffinityTransientRetries retries on
+//     the same channel before invalidating.
+//
+// Returns true if the affinity was invalidated (caller may log this).
+func TryInvalidateChannelAffinityOnError(c *gin.Context, err *types.NewAPIError) bool {
+	if c == nil {
+		return false
+	}
+	cacheKey, _, ok := getChannelAffinityContext(c)
+	if !ok || cacheKey == "" {
+		return false
+	}
+
+	if isTransientAffinityError(err) {
+		// Increment transient retry counter
+		count := 0
+		if v, exists := c.Get(ginKeyChannelAffinityTransientRetries); exists {
+			if n, ok := v.(int); ok {
+				count = n
+			}
+		}
+		count++
+		c.Set(ginKeyChannelAffinityTransientRetries, count)
+		if count <= MaxAffinityTransientRetries {
+			// Still within tolerance — keep affinity, retry same channel
+			return false
+		}
+	}
+
+	// Either a hard upstream error, or transient retries exhausted — invalidate
+	cache := getChannelAffinityCache()
+	if _, err2 := cache.DeleteMany([]string{cacheKey}); err2 != nil {
+		common.SysError(fmt.Sprintf("channel affinity cache delete failed: key=%s, err=%v", cacheKey, err2))
+	}
+	return true
+}
+
+// InvalidateChannelAffinity unconditionally removes the affinity cache entry.
+// Prefer TryInvalidateChannelAffinityOnError in retry loops.
+func InvalidateChannelAffinity(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	cacheKey, _, ok := getChannelAffinityContext(c)
+	if !ok || cacheKey == "" {
+		return
+	}
+	cache := getChannelAffinityCache()
+	if _, err := cache.DeleteMany([]string{cacheKey}); err != nil {
+		common.SysError(fmt.Sprintf("channel affinity cache delete failed: key=%s, err=%v", cacheKey, err))
+	}
 }
 
 func RecordChannelAffinity(c *gin.Context, channelID int) {
