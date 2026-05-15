@@ -208,6 +208,14 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
+		messageLogRoute := apiRouter.Group("/message_log")
+		messageLogRoute.Use(middleware.RootAuth())
+		{
+			messageLogRoute.GET("/", controller.GetMessageLogs)
+			messageLogRoute.GET("/stats", controller.GetMessageLogStats)
+			messageLogRoute.GET("/:id", controller.GetMessageLogDetail)
+			messageLogRoute.DELETE("/", controller.DeleteMessageLogs)
+		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{

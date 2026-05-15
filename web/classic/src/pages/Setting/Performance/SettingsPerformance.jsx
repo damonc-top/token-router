@@ -74,11 +74,19 @@ export default function SettingsPerformance(props) {
     'performance_setting.monitor_disk_threshold': 95,
   });
   const refForm = useRef();
+  const refMessageLogForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
   const [logInfo, setLogInfo] = useState(null);
   const [logCleanupMode, setLogCleanupMode] = useState('by_count');
   const [logCleanupValue, setLogCleanupValue] = useState(10);
   const [logCleanupLoading, setLogCleanupLoading] = useState(false);
+  const [messageLogStats, setMessageLogStats] = useState(null);
+  const [messageLogInputs, setMessageLogInputs] = useState({
+    'message_log_setting.enabled': false,
+    'message_log_setting.retention_days': 7,
+    'message_log_setting.max_size_mb': 1024,
+  });
+  const [messageLogInputsRow, setMessageLogInputsRow] = useState(messageLogInputs);
 
   function handleFieldChange(fieldName) {
     return (value) => {
@@ -185,6 +193,63 @@ export default function SettingsPerformance(props) {
     }
   }
 
+  async function fetchMessageLogStats() {
+    try {
+      const res = await API.get('/api/message_log/stats');
+      if (res.data.success) {
+        setMessageLogStats(res.data.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch message log stats:', error);
+    }
+  }
+
+  function handleMessageLogFieldChange(fieldName) {
+    return (value) => {
+      setMessageLogInputs((prev) => ({ ...prev, [fieldName]: value }));
+    };
+  }
+
+  function onMessageLogSubmit() {
+    const updateArray = compareObjects(messageLogInputs, messageLogInputsRow);
+    if (!updateArray.length) return showWarning(t('你似乎并没有修改什么'));
+    const requestQueue = updateArray.map((item) => {
+      return API.put('/api/option/', {
+        key: item.key,
+        value: String(messageLogInputs[item.key]),
+      });
+    });
+    setLoading(true);
+    Promise.all(requestQueue)
+      .then((res) => {
+        if (res.includes(undefined)) return showError(t('部分保存失败，请重试'));
+        showSuccess(t('保存成功'));
+        props.refresh();
+        setMessageLogInputsRow({ ...messageLogInputs });
+        fetchMessageLogStats();
+      })
+      .catch(() => {
+        showError(t('保存失败，请重试'));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }
+
+  async function clearMessageLogs() {
+    try {
+      const res = await API.delete('/api/message_log/');
+      if (res.data.success) {
+        showSuccess(t('消息日志已清除'));
+        fetchMessageLogStats();
+      } else {
+        showError(res.data.message || t('清理失败'));
+      }
+    } catch (error) {
+      showError(t('清理失败'));
+    }
+  }
+
   async function cleanupLogFiles() {
     if (logCleanupValue == null || isNaN(logCleanupValue) || logCleanupValue < 1) {
       showError(t('请输入有效的数值'));
@@ -233,8 +298,35 @@ export default function SettingsPerformance(props) {
     if (refForm.current) {
       refForm.current.setValues({ ...inputs, ...currentInputs });
     }
+
+    // Load message log settings
+    const currentMsgLogInputs = {};
+    for (let key in props.options) {
+      if (Object.keys(messageLogInputs).includes(key)) {
+        if (typeof messageLogInputs[key] === 'boolean') {
+          currentMsgLogInputs[key] =
+            props.options[key] === 'true' || props.options[key] === true;
+        } else if (typeof messageLogInputs[key] === 'number') {
+          currentMsgLogInputs[key] = parseInt(props.options[key]) || messageLogInputs[key];
+        } else {
+          currentMsgLogInputs[key] = props.options[key];
+        }
+      }
+    }
+    setMessageLogInputs((prev) => {
+      const updated = { ...prev, ...currentMsgLogInputs };
+      setTimeout(() => {
+        if (refMessageLogForm.current) {
+          refMessageLogForm.current.setValues(updated);
+        }
+      }, 0);
+      return updated;
+    });
+    setMessageLogInputsRow((prev) => ({ ...prev, ...currentMsgLogInputs }));
+
     fetchStats();
     fetchLogInfo();
+    fetchMessageLogStats();
   }, [props.options]);
 
   const diskCacheUsagePercent =
@@ -397,6 +489,84 @@ export default function SettingsPerformance(props) {
           </Form.Section>
         </Form>
       </Spin>
+
+      {/* 消息日志管理 */}
+      <Form
+        initValues={messageLogInputs}
+        getFormApi={(formAPI) => (refMessageLogForm.current = formAPI)}
+        style={{ marginBottom: 15 }}
+      >
+        <Form.Section text={t('消息日志管理')}>
+          <Banner
+            type='info'
+            description={t(
+              '记录网关与上游 AI 供应商之间的原始请求/响应消息，用于分析和成本优化。',
+            )}
+            style={{ marginBottom: 16 }}
+          />
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field={'message_log_setting.enabled'}
+                label={t('启用消息日志')}
+                extraText={t('记录所有上游请求/响应原始数据')}
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                onChange={handleMessageLogFieldChange('message_log_setting.enabled')}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field={'message_log_setting.retention_days'}
+                label={t('保留天数')}
+                extraText={t('最多保留 30 天')}
+                min={1}
+                max={30}
+                onChange={handleMessageLogFieldChange('message_log_setting.retention_days')}
+                disabled={!messageLogInputs['message_log_setting.enabled']}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field={'message_log_setting.max_size_mb'}
+                label={t('磁盘空间上限 (MB)')}
+                extraText={t('达到上限时删除最早的记录')}
+                min={1}
+                onChange={handleMessageLogFieldChange('message_log_setting.max_size_mb')}
+                disabled={!messageLogInputs['message_log_setting.enabled']}
+              />
+            </Col>
+          </Row>
+          {messageLogStats && (
+            <Descriptions
+              data={[
+                { key: t('总记录数'), value: messageLogStats.count },
+                { key: t('磁盘占用'), value: `${messageLogStats.size_mb} MB` },
+              ]}
+              style={{ marginTop: 16, marginBottom: 16 }}
+            />
+          )}
+          <Row gutter={16} style={{ marginTop: 16 }}>
+            <Col>
+              <Button size='default' onClick={onMessageLogSubmit} loading={loading}>
+                {t('保存消息日志设置')}
+              </Button>
+            </Col>
+            <Col>
+              <Popconfirm
+                title={t('确认清除所有消息日志？')}
+                content={t('这将永久删除所有已记录的请求/响应消息日志，此操作不可撤销。')}
+                onConfirm={clearMessageLogs}
+              >
+                <Button type='danger'>
+                  {t('清除所有消息日志')}
+                </Button>
+              </Popconfirm>
+            </Col>
+          </Row>
+        </Form.Section>
+      </Form>
 
       {/* 服务器日志管理 */}
       <Form.Section text={t('服务器日志管理')}>

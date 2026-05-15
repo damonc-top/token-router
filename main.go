@@ -23,9 +23,11 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	messagelog "github.com/QuantumNous/new-api/pkg/message_log"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
+	_ "github.com/QuantumNous/new-api/setting/message_log_setting"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
@@ -334,6 +336,11 @@ func InitResources() error {
 		return err
 	}
 
+	err = model.InitMsgLogDB()
+	if err != nil {
+		return err
+	}
+
 	// Initialize Redis
 	err = common.InitRedisClient()
 	if err != nil {
@@ -341,6 +348,7 @@ func InitResources() error {
 	}
 
 	perfmetrics.Init()
+	messagelog.Init()
 
 	// 启动系统监控
 	common.StartSystemMonitor()

@@ -12,4 +12,5 @@ var LogSqlType = DatabaseTypeSQLite // Default to SQLite for logging SQL queries
 var UsingMySQL = false
 var UsingClickHouse = false
 
-var SQLitePath = "one-api.db?_busy_timeout=30000"
+var SQLitePath = "one-api.db?_busy_timeout=30000&_journal_mode=WAL"
+var MsgLogSQLitePath = "message-log.db?_busy_timeout=30000&_journal_mode=WAL"

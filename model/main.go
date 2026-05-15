@@ -65,6 +65,8 @@ var DB *gorm.DB
 
 var LOG_DB *gorm.DB
 
+var MSG_LOG_DB *gorm.DB
+
 func createRootAccountIfNeed() error {
 	var user User
 	//if user.Status != common.UserStatusEnabled {
@@ -143,7 +145,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 			} else {
 				common.LogSqlType = common.DatabaseTypeSQLite
 			}
-			return gorm.Open(sqlite.Open(common.SQLitePath+"?_busy_timeout=5000&_journal_mode=WAL"), &gorm.Config{
+			return gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 				PrepareStmt: true, // precompile SQL
 			})
 		}
@@ -169,7 +171,7 @@ func chooseDB(envName string, isLog bool) (*gorm.DB, error) {
 	// Use SQLite
 	common.SysLog("SQL_DSN not set, using SQLite as database")
 	common.UsingSQLite = true
-	return gorm.Open(sqlite.Open(common.SQLitePath+"?_busy_timeout=5000&_journal_mode=WAL"), &gorm.Config{
+	return gorm.Open(sqlite.Open(common.SQLitePath), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
 	})
 }
@@ -257,6 +259,32 @@ func InitLogDB() (err error) {
 	return err
 }
 
+func InitMsgLogDB() error {
+	if common.UsingSQLite {
+		db, err := gorm.Open(sqlite.Open(common.MsgLogSQLitePath), &gorm.Config{
+			PrepareStmt: true,
+		})
+		if err != nil {
+			return err
+		}
+		sqlDB, err := db.DB()
+		if err != nil {
+			return err
+		}
+		sqlDB.SetMaxIdleConns(1)
+		sqlDB.SetMaxOpenConns(1)
+		MSG_LOG_DB = db
+	} else {
+		MSG_LOG_DB = LOG_DB
+	}
+	if common.IsMasterNode {
+		if err := MSG_LOG_DB.AutoMigrate(&MessageLog{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func migrateDB() error {
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
@@ -274,6 +302,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&MessageLog{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -380,6 +409,9 @@ func migrateDBFast() error {
 func migrateLOGDB() error {
 	var err error
 	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	if err = LOG_DB.AutoMigrate(&MessageLog{}); err != nil {
 		return err
 	}
 	return nil

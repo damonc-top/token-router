@@ -82,6 +82,9 @@ const perfSchema = z.object({
   'perf_metrics_setting.flush_interval': z.coerce.number().min(1),
   'perf_metrics_setting.bucket_time': z.enum(['minute', '5min', 'hour']),
   'perf_metrics_setting.retention_days': z.coerce.number().min(0),
+  'message_log_setting.enabled': z.boolean(),
+  'message_log_setting.retention_days': z.coerce.number().min(1).max(30),
+  'message_log_setting.max_size_mb': z.coerce.number().min(1),
 })
 
 type PerfFormValues = z.infer<typeof perfSchema>
@@ -151,6 +154,10 @@ export function PerformanceSection(props: Props) {
   const [logCleanupMode, setLogCleanupMode] = useState('by_count')
   const [logCleanupValue, setLogCleanupValue] = useState(10)
   const [logCleanupLoading, setLogCleanupLoading] = useState(false)
+  const [messageLogStats, setMessageLogStats] = useState<{
+    count: number
+    size_mb: number
+  } | null>(null)
 
   const form = useForm<PerfFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,10 +186,20 @@ export function PerformanceSection(props: Props) {
     }
   }, [])
 
+  const fetchMessageLogStats = useCallback(async () => {
+    try {
+      const res = await api.get('/api/message_log/stats')
+      if (res.data.success) setMessageLogStats(res.data.data)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   useEffect(() => {
     fetchStats()
     fetchLogInfo()
-  }, [fetchStats, fetchLogInfo])
+    fetchMessageLogStats()
+  }, [fetchStats, fetchLogInfo, fetchMessageLogStats])
 
   const onSubmit = async (data: PerfFormValues) => {
     const entries = Object.entries(data) as [string, unknown][]
@@ -272,6 +289,7 @@ export function PerformanceSection(props: Props) {
   const diskEnabled = form.watch('performance_setting.disk_cache_enabled')
   const monitorEnabled = form.watch('performance_setting.monitor_enabled')
   const perfMetricsEnabled = form.watch('perf_metrics_setting.enabled')
+  const messageLogEnabled = form.watch('message_log_setting.enabled')
   const maxCacheSizeMb = form.watch(
     'performance_setting.disk_cache_max_size_mb'
   )
@@ -579,6 +597,149 @@ export function PerformanceSection(props: Props) {
           </Button>
         </form>
       </Form>
+
+      <Separator />
+
+      {/* Message Log Management */}
+      <div className='space-y-4'>
+        <div>
+          <h4 className='font-medium'>{t('Message Log Management')}</h4>
+          <p className='text-muted-foreground mt-1 text-xs'>
+            {t(
+              'Record raw request/response messages between the gateway and upstream AI providers for analysis and cost optimization.'
+            )}
+          </p>
+        </div>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+            <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
+              <FormField
+                control={form.control}
+                name='message_log_setting.enabled'
+                render={({ field }) => (
+                  <FormItem className='flex items-center gap-2'>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormLabel>{t('Enable Message Logging')}</FormLabel>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='message_log_setting.retention_days'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Retention Days')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={30}
+                        {...field}
+                        disabled={!messageLogEnabled}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Maximum 30 days')}
+                    </FormDescription>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='message_log_setting.max_size_mb'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Max Disk Usage (MB)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        {...field}
+                        disabled={!messageLogEnabled}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Delete oldest records when limit is reached')}
+                    </FormDescription>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {messageLogStats && (
+              <div className='rounded-lg border p-4'>
+                <div className='grid grid-cols-2 gap-2 text-sm'>
+                  <div>
+                    <span className='text-muted-foreground'>
+                      {t('Total Records')}:
+                    </span>{' '}
+                    {messageLogStats.count}
+                  </div>
+                  <div>
+                    <span className='text-muted-foreground'>
+                      {t('Disk Usage')}:
+                    </span>{' '}
+                    {messageLogStats.size_mb} MB
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className='flex gap-2'>
+              <Button type='submit' disabled={updateOption.isPending}>
+                {updateOption.isPending ? t('Saving...') : t('Save Changes')}
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger
+                  render={
+                    <Button variant='destructive' size='sm' type='button' />
+                  }
+                >
+                  {t('Clear All Message Logs')}
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      {t('Confirm clearing all message logs?')}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {t(
+                        'This will permanently delete all recorded request/response message logs. This action cannot be undone.'
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        try {
+                          const res = await api.delete('/api/message_log/')
+                          if (res.data.success) {
+                            toast.success(t('Message logs cleared'))
+                            fetchMessageLogStats()
+                          } else {
+                            toast.error(res.data.message || t('Cleanup failed'))
+                          }
+                        } catch {
+                          toast.error(t('Cleanup failed'))
+                        }
+                      }}
+                    >
+                      {t('Confirm')}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </form>
+        </Form>
+      </div>
 
       <Separator />
 

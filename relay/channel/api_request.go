@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	messagelog "github.com/QuantumNous/new-api/pkg/message_log"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -515,6 +517,14 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	// Capture request body for message logging
+	var capturedReqBody []byte
+	shouldLog := messagelog.ShouldLog()
+	if shouldLog && req.Body != nil {
+		capturedReqBody, _ = io.ReadAll(req.Body)
+		req.Body = io.NopCloser(bytes.NewReader(capturedReqBody))
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.LogError(c, "do request failed: "+err.Error())
@@ -526,6 +536,35 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
 		c.Set(common2.UpstreamRequestIdKey, upID)
+	}
+
+	// Wrap response body for message logging
+	if shouldLog && resp.Body != nil {
+		var respBuf bytes.Buffer
+		resp.Body = messagelog.NewReadCloserWrapper(
+			io.TeeReader(resp.Body, &respBuf),
+			resp.Body,
+			func() {
+				messagelog.Submit(&messagelog.LogEntry{
+					RequestId:         info.RequestId,
+					UserId:            info.UserId,
+					TokenId:           info.TokenId,
+					ChannelId:         info.ChannelId,
+					ModelName:         info.OriginModelName,
+					UpstreamModelName: info.UpstreamModelName,
+					GroupName:         info.UsingGroup,
+					RequestURL:        req.URL.String(),
+					RequestMethod:     req.Method,
+					RequestHeaders:    messagelog.SanitizeHeaders(req.Header),
+					RequestBody:       capturedReqBody,
+					ResponseStatus:    resp.StatusCode,
+					ResponseHeaders:   messagelog.FlattenHeaders(resp.Header),
+					ResponseBody:      &respBuf,
+					IsStream:          info.IsStream,
+					CreatedAt:         common2.GetTimestamp(),
+				})
+			},
+		)
 	}
 
 	_ = req.Body.Close()
