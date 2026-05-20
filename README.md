@@ -44,6 +44,7 @@
 
 <p align="center">
   <a href="#-quick-start">Quick Start</a> •
+  <a href="#-fork-notes">Fork Notes</a> •
   <a href="#-key-features">Key Features</a> •
   <a href="#-deployment">Deployment</a> •
   <a href="#-documentation">Documentation</a> •
@@ -59,6 +60,29 @@
 > - Users must lawfully obtain upstream API keys, accounts, model services, and interface permissions, and must comply with upstream terms of service and applicable laws and regulations.
 > - Users should ensure their use complies with upstream terms of service and applicable laws and regulations.
 > - When providing generative AI services to the public, users should comply with applicable regulatory requirements and fulfill all filing, licensing, content safety, real-name verification, log retention, tax, and upstream authorization obligations required by their jurisdiction.
+
+---
+
+## 🔧 Fork Notes
+
+This repository is a personal maintenance fork based on [QuantumNous/new-api](https://github.com/QuantumNous/new-api). Upstream project identity, attribution, documentation links, and license notices are retained.
+
+Current local branch: `afeng-mix`
+
+Local commits currently on this branch after `origin/main`:
+
+- `2798bcbf` `fix:afeng版本修改`
+- `be511528` `启动脚本`
+- `f01a7394` `feature:新增大模型消息日志记录，分表存储`
+
+Before publishing to a personal GitHub repository, review the working tree and set `origin` to your own repository:
+
+```bash
+git remote -v
+git remote set-url origin https://github.com/<your-username>/<your-repo>.git
+git status --short
+git push -u origin afeng-mix
+```
 
 ---
 

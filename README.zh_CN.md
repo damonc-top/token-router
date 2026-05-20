@@ -44,6 +44,7 @@
 
 <p align="center">
   <a href="#-快速开始">快速开始</a> •
+  <a href="#-个人维护说明">个人维护</a> •
   <a href="#-主要特性">主要特性</a> •
   <a href="#-部署">部署</a> •
   <a href="#-文档">文档</a> •
@@ -59,6 +60,29 @@
 > - 使用者必须合法取得上游 API Key、账号、模型服务或接口权限，并遵守上游服务条款及适用法律法规。
 > - 使用者应确保其使用方式符合上游服务条款及适用法律法规。
 > - 面向公众提供生成式人工智能服务时，使用者应遵守[《生成式人工智能服务管理暂行办法》](http://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm)等监管要求，自行完成所在司法辖区要求的备案、许可、内容安全、实名、日志留存、税务和上游授权等合规义务。
+
+---
+
+## 🔧 个人维护说明
+
+本仓库是基于 [QuantumNous/new-api](https://github.com/QuantumNous/new-api) 的个人维护分支。上游项目身份、署名、文档链接和许可证声明均保留。
+
+当前本地分支：`afeng-mix`
+
+当前分支相对 `origin/main` 包含以下本地提交：
+
+- `2798bcbf` `fix:afeng版本修改`
+- `be511528` `启动脚本`
+- `f01a7394` `feature:新增大模型消息日志记录，分表存储`
+
+推送到个人 GitHub 仓库前，先检查工作区并将 `origin` 改为自己的仓库地址：
+
+```bash
+git remote -v
+git remote set-url origin https://github.com/<your-username>/<your-repo>.git
+git status --short
+git push -u origin afeng-mix
+```
 
 ---
 
