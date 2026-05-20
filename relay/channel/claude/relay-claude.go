@@ -806,6 +806,11 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			// message_start, 获取usage
 			if claudeResponse.Message != nil {
 				info.UpstreamModelName = claudeResponse.Message.Model
+				if info.IsModelMapped && claudeResponse.Message.Model != info.OriginModelName {
+					if patched, err := sjson.Set(data, "message.model", info.OriginModelName); err == nil {
+						data = patched
+					}
+				}
 			}
 		} else if claudeResponse.Type == "message_delta" {
 			// 确保 message_delta 的 usage 包含完整的 input_tokens 和 cache 相关字段
@@ -925,6 +930,11 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		}
 	case types.RelayFormatClaude:
 		responseData = data
+		if info.IsModelMapped && claudeResponse.Model != info.OriginModelName {
+			if patched, pErr := sjson.SetBytes(responseData, "model", info.OriginModelName); pErr == nil {
+				responseData = patched
+			}
+		}
 	}
 
 	if claudeResponse.Usage != nil && claudeResponse.Usage.ServerToolUse != nil && claudeResponse.Usage.ServerToolUse.WebSearchRequests > 0 {

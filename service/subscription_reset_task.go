@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	subscriptionResetTickInterval = 1 * time.Minute
+	subscriptionResetTickInterval = 5 * time.Minute
 	subscriptionResetBatchSize    = 300
 	subscriptionCleanupInterval   = 30 * time.Minute
 )
@@ -50,10 +50,15 @@ func runSubscriptionQuotaResetOnce() {
 	}
 	defer subscriptionResetRunning.Store(false)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
 	totalReset := 0
 	totalExpired := 0
 	for {
+		if ctx.Err() != nil {
+			logger.LogWarn(ctx, "subscription expire task timed out")
+			return
+		}
 		n, err := model.ExpireDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
 			logger.LogWarn(ctx, fmt.Sprintf("subscription expire task failed: %v", err))
@@ -68,6 +73,10 @@ func runSubscriptionQuotaResetOnce() {
 		}
 	}
 	for {
+		if ctx.Err() != nil {
+			logger.LogWarn(ctx, "subscription reset task timed out")
+			return
+		}
 		n, err := model.ResetDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
 			logger.LogWarn(ctx, fmt.Sprintf("subscription quota reset task failed: %v", err))

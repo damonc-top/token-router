@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -194,8 +195,11 @@ func InitDB() (err error) {
 			return err
 		}
 		if common.UsingSQLite {
-			sqlDB.SetMaxIdleConns(1)
-			sqlDB.SetMaxOpenConns(1)
+			// WAL mode allows concurrent readers and one writer. Allow multiple
+			// connections so goroutines don't queue at the Go pool layer.
+			// SQLite's own _busy_timeout=30000 handles write-write contention.
+			sqlDB.SetMaxIdleConns(4)
+			sqlDB.SetMaxOpenConns(10)
 		} else {
 			sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
 			sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
@@ -604,6 +608,18 @@ func migrateSubscriptionPlanPriceAmount() {
 			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
 		}
 	}
+}
+
+// DBTx runs fn inside a transaction. On SQLite it attaches a 30-second context
+// so that write-write contention (busy_timeout at the SQLite layer) surfaces as
+// a Go error rather than blocking indefinitely.
+func DBTx(fn func(tx *gorm.DB) error) error {
+	if !common.UsingSQLite {
+		return DB.Transaction(fn)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return DB.WithContext(ctx).Transaction(fn)
 }
 
 func closeDB(db *gorm.DB) error {

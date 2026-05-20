@@ -187,7 +187,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	maxTotalAttempts := common.RetryTimes + 1
+	if maxTotalAttempts < 1 {
+		maxTotalAttempts = 1
+	}
+	hardCap := maxTotalAttempts * 3
+	if hardCap > 30 {
+		hardCap = 30
+	}
+	totalAttempts := 0
+
+	for ; retryParam.GetRetry() <= common.RetryTimes && totalAttempts < hardCap; retryParam.IncreaseRetry() {
+		totalAttempts++
 		relayInfo.RetryIndex = retryParam.GetRetry()
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
@@ -333,14 +344,14 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 		return false
 	}
-	if types.IsChannelError(openaiErr) {
-		return true
-	}
 	if types.IsSkipRetryError(openaiErr) {
 		return false
 	}
 	if retryTimes <= 0 {
 		return false
+	}
+	if types.IsChannelError(openaiErr) {
+		return true
 	}
 	if _, ok := c.Get("specific_channel_id"); ok {
 		return false
@@ -518,7 +529,18 @@ func RelayTask(c *gin.Context) {
 		Retry:      common.GetPointer(0),
 	}
 
-	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
+	taskMaxAttempts := common.RetryTimes + 1
+	if taskMaxAttempts < 1 {
+		taskMaxAttempts = 1
+	}
+	taskHardCap := taskMaxAttempts * 3
+	if taskHardCap > 30 {
+		taskHardCap = 30
+	}
+	taskTotalAttempts := 0
+
+	for ; retryParam.GetRetry() <= common.RetryTimes && taskTotalAttempts < taskHardCap; retryParam.IncreaseRetry() {
+		taskTotalAttempts++
 		var channel *model.Channel
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
