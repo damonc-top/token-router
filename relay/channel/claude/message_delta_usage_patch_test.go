@@ -127,3 +127,65 @@ func TestBuildMessageDeltaPatchUsage(t *testing.T) {
 		require.EqualValues(t, 0, usage.CacheCreation.Ephemeral1hInputTokens)
 	})
 }
+
+func TestHydrateDeepSeekAnthropicCompatUsageTopLevel(t *testing.T) {
+	response := dto.ClaudeResponse{}
+	rawResponse := `{"type":"message_delta","usage":{"input_tokens":120,"output_tokens":45,"cache_read_input_tokens":20,"cache_creation_input_tokens":18,"cache_creation":{"ephemeral_5m_input_tokens":8,"ephemeral_1h_input_tokens":6}}}`
+	hydrateDeepSeekClaudeUsageFromCompat(&response, rawResponse)
+
+	require.NotNil(t, response.Usage)
+	require.EqualValues(t, 120, response.Usage.InputTokens)
+	require.EqualValues(t, 45, response.Usage.OutputTokens)
+	require.EqualValues(t, 20, response.Usage.CacheReadInputTokens)
+	require.EqualValues(t, 18, response.Usage.CacheCreationInputTokens)
+	require.NotNil(t, response.Usage.CacheCreation)
+	require.EqualValues(t, 8, response.Usage.CacheCreation.Ephemeral5mInputTokens)
+	require.EqualValues(t, 6, response.Usage.CacheCreation.Ephemeral1hInputTokens)
+}
+
+func TestHydrateDeepSeekAnthropicCompatUsageMessageNested(t *testing.T) {
+	response := dto.ClaudeResponse{
+		Message: &dto.ClaudeMediaMessage{},
+	}
+	rawResponse := `{"type":"message_start","message":{"model":"deepseek","usage":{"prompt_tokens":240,"completion_tokens":30,"prompt_cache_hit_tokens":15,"prompt_tokens_details":{"cached_tokens":15}}}}`
+	hydrateDeepSeekClaudeUsageFromCompat(&response, rawResponse)
+
+	require.NotNil(t, response.Message)
+	require.NotNil(t, response.Message.Usage)
+	require.EqualValues(t, 240, response.Message.Usage.InputTokens)
+	require.EqualValues(t, 30, response.Message.Usage.OutputTokens)
+	require.EqualValues(t, 15, response.Message.Usage.CacheReadInputTokens)
+}
+
+func TestApplyDeepSeekAnthropicCompatUsagePreserveExistingValues(t *testing.T) {
+	dst := &dto.ClaudeUsage{
+		InputTokens:              100,
+		OutputTokens:             200,
+		CacheReadInputTokens:     30,
+		CacheCreationInputTokens: 40,
+		CacheCreation: &dto.ClaudeCacheCreationUsage{
+			Ephemeral5mInputTokens: 50,
+			Ephemeral1hInputTokens: 60,
+		},
+	}
+
+	src := &deepSeekAnthropicCompatUsage{
+		InputTokens:              120,
+		OutputTokens:             220,
+		CacheReadInputTokens:     45,
+		CacheCreationInputTokens: 70,
+		CacheCreation: &struct {
+			Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
+			Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
+		}{Ephemeral5mInputTokens: 80, Ephemeral1hInputTokens: 90},
+	}
+
+	applyDeepSeekAnthropicCompatUsage(dst, src)
+
+	require.EqualValues(t, 100, dst.InputTokens)
+	require.EqualValues(t, 200, dst.OutputTokens)
+	require.EqualValues(t, 30, dst.CacheReadInputTokens)
+	require.EqualValues(t, 40, dst.CacheCreationInputTokens)
+	require.EqualValues(t, 50, dst.CacheCreation.Ephemeral5mInputTokens)
+	require.EqualValues(t, 60, dst.CacheCreation.Ephemeral1hInputTokens)
+}

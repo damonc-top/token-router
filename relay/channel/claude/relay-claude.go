@@ -677,6 +677,114 @@ func shouldSkipClaudeMessageDeltaUsagePatch(info *relaycommon.RelayInfo) bool {
 	return info.ChannelSetting.PassThroughBodyEnabled
 }
 
+type deepSeekAnthropicCompatUsage struct {
+	InputTokens              int `json:"input_tokens"`
+	PromptTokens             int `json:"prompt_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CompletionTokens         int `json:"completion_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	PromptCacheHitTokens     int `json:"prompt_cache_hit_tokens"`
+	CachedTokens             int `json:"cached_tokens"`
+
+	InputTokensDetails *struct {
+		CachedTokens *int `json:"cached_tokens"`
+	} `json:"input_tokens_details"`
+
+	PromptTokensDetails *struct {
+		CachedTokens *int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+
+	CacheCreation *struct {
+		Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
+		Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
+	} `json:"cache_creation"`
+}
+
+type deepSeekAnthropicCompatResponse struct {
+	Usage   *deepSeekAnthropicCompatUsage `json:"usage"`
+	Message *struct {
+		Usage *deepSeekAnthropicCompatUsage `json:"usage"`
+	} `json:"message"`
+}
+
+func hydrateDeepSeekClaudeUsageFromCompat(claudeResponse *dto.ClaudeResponse, rawResponse string) {
+	if claudeResponse == nil || rawResponse == "" {
+		return
+	}
+
+	var compat deepSeekAnthropicCompatResponse
+	if err := common.UnmarshalJsonStr(rawResponse, &compat); err != nil {
+		return
+	}
+
+	if compat.Usage != nil {
+		if claudeResponse.Usage == nil {
+			claudeResponse.Usage = &dto.ClaudeUsage{}
+		}
+		applyDeepSeekAnthropicCompatUsage(claudeResponse.Usage, compat.Usage)
+	}
+
+	if claudeResponse.Message != nil && compat.Message != nil && compat.Message.Usage != nil {
+		if claudeResponse.Message.Usage == nil {
+			claudeResponse.Message.Usage = &dto.ClaudeUsage{}
+		}
+		applyDeepSeekAnthropicCompatUsage(claudeResponse.Message.Usage, compat.Message.Usage)
+	}
+}
+
+func applyDeepSeekAnthropicCompatUsage(dst *dto.ClaudeUsage, src *deepSeekAnthropicCompatUsage) {
+	if dst == nil || src == nil {
+		return
+	}
+
+	if dst.InputTokens == 0 {
+		if src.InputTokens > 0 {
+			dst.InputTokens = src.InputTokens
+		} else if src.PromptTokens > 0 {
+			dst.InputTokens = src.PromptTokens
+		}
+	}
+
+	if dst.OutputTokens == 0 {
+		if src.OutputTokens > 0 {
+			dst.OutputTokens = src.OutputTokens
+		} else if src.CompletionTokens > 0 {
+			dst.OutputTokens = src.CompletionTokens
+		}
+	}
+
+	if dst.CacheReadInputTokens == 0 {
+		if src.CacheReadInputTokens > 0 {
+			dst.CacheReadInputTokens = src.CacheReadInputTokens
+		} else if src.PromptCacheHitTokens > 0 {
+			dst.CacheReadInputTokens = src.PromptCacheHitTokens
+		} else if src.CachedTokens > 0 {
+			dst.CacheReadInputTokens = src.CachedTokens
+		} else if src.InputTokensDetails != nil && src.InputTokensDetails.CachedTokens != nil && *src.InputTokensDetails.CachedTokens > 0 {
+			dst.CacheReadInputTokens = *src.InputTokensDetails.CachedTokens
+		} else if src.PromptTokensDetails != nil && src.PromptTokensDetails.CachedTokens != nil && *src.PromptTokensDetails.CachedTokens > 0 {
+			dst.CacheReadInputTokens = *src.PromptTokensDetails.CachedTokens
+		}
+	}
+
+	if dst.CacheCreationInputTokens == 0 && src.CacheCreationInputTokens > 0 {
+		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+	}
+
+	if src.CacheCreation != nil && (src.CacheCreation.Ephemeral5mInputTokens > 0 || src.CacheCreation.Ephemeral1hInputTokens > 0) {
+		if dst.CacheCreation == nil {
+			dst.CacheCreation = &dto.ClaudeCacheCreationUsage{}
+		}
+		if src.CacheCreation.Ephemeral5mInputTokens > 0 && dst.CacheCreation.Ephemeral5mInputTokens == 0 {
+			dst.CacheCreation.Ephemeral5mInputTokens = src.CacheCreation.Ephemeral5mInputTokens
+		}
+		if src.CacheCreation.Ephemeral1hInputTokens > 0 && dst.CacheCreation.Ephemeral1hInputTokens == 0 {
+			dst.CacheCreation.Ephemeral1hInputTokens = src.CacheCreation.Ephemeral1hInputTokens
+		}
+	}
+}
+
 func patchClaudeMessageDeltaUsageData(data string, usage *dto.ClaudeUsage) string {
 	if data == "" || usage == nil {
 		return data
@@ -790,6 +898,9 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		common.SysLog("error unmarshalling stream response: " + err.Error())
 		return types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
+	if info != nil && info.ChannelType == constant.ChannelTypeDeepSeek {
+		hydrateDeepSeekClaudeUsageFromCompat(&claudeResponse, data)
+	}
 	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
 		return types.WithClaudeError(*claudeError, http.StatusInternalServerError)
 	}
@@ -901,6 +1012,9 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	err := common.Unmarshal(data, &claudeResponse)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody)
+	}
+	if info != nil && info.ChannelType == constant.ChannelTypeDeepSeek {
+		hydrateDeepSeekClaudeUsageFromCompat(&claudeResponse, string(data))
 	}
 	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
 		return types.WithClaudeError(*claudeError, http.StatusInternalServerError)

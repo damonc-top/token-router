@@ -207,6 +207,12 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.POST("/gc", controller.ForceGC)
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
+			performanceRoute.GET("/pprof/cpu", controller.DownloadCPUProfile)
+			performanceRoute.GET("/pprof/heap", controller.DownloadHeapProfile)
+			performanceRoute.GET("/pprof/goroutine", controller.DownloadGoroutineProfile)
+			performanceRoute.GET("/pprof/mutex", controller.DownloadMutexProfile)
+			performanceRoute.GET("/pprof/block", controller.DownloadBlockProfile)
+			performanceRoute.GET("/pprof/trace", controller.DownloadTrace)
 		}
 		messageLogRoute := apiRouter.Group("/message_log")
 		messageLogRoute.Use(middleware.RootAuth())

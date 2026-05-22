@@ -96,10 +96,13 @@ var channelAffinitySetting = ChannelAffinitySetting{
 		},
 		{
 			Name:       "claude cli trace",
-			ModelRegex: []string{"^claude-.*$"},
+			ModelRegex: []string{"^claude", "^deepseek"},
 			PathRegex:  []string{"/v1/messages"},
 			KeySources: []ChannelAffinityKeySource{
 				{Type: "gjson", Path: "metadata.user_id"},
+				{Type: "gjson", Path: "metadata.session_id"},
+				{Type: "gjson", Path: "metadata.user"},
+				{Type: "gjson", Path: "prompt_cache_key"},
 			},
 			ValueRegex:            "",
 			TTLSeconds:            0,

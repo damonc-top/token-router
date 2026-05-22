@@ -35,3 +35,9 @@ data/
 .test
 token_estimator_test.go
 skills-lock.json
+.modcache
+cache_break_example.txt
+new-api-backup
+new-api-next
+cloudflared.log
+new-api.log
