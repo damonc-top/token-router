@@ -187,6 +187,9 @@ const EditChannelModal = (props) => {
     priority: 0,
     weight: 0,
     tag: '',
+    manual_balance_enabled: false,
+    manual_balance_amount: 0,
+    manual_balance_reset_period: 'monthly',
     multi_key_mode: 'random',
     // 渠道额外设置的默认值
     force_format: false,
@@ -973,6 +976,10 @@ const EditChannelModal = (props) => {
       ) {
         data.base_url = 'https://ark.cn-beijing.volces.com';
       }
+      data.manual_balance_enabled = data.manual_balance_enabled === true;
+      data.manual_balance_amount = Number(data.manual_balance_amount || 0);
+      data.manual_balance_reset_period =
+        data.manual_balance_reset_period || 'monthly';
 
       initialBaseUrlRef.current = data.base_url || '';
       setInputs(data);
@@ -1745,6 +1752,17 @@ const EditChannelModal = (props) => {
     if (localInputs.type === 18 && localInputs.other === '') {
       localInputs.other = 'v2.1';
     }
+    localInputs.manual_balance_enabled =
+      localInputs.manual_balance_enabled === true;
+    localInputs.manual_balance_amount = Number(
+      localInputs.manual_balance_amount || 0,
+    );
+    if (localInputs.manual_balance_amount < 0) {
+      showInfo(t('手动余额不能小于 0'));
+      return;
+    }
+    localInputs.manual_balance_reset_period =
+      localInputs.manual_balance_reset_period || 'monthly';
 
     // 生成渠道额外设置JSON
     const channelExtraSettings = {
@@ -2665,6 +2683,65 @@ const EditChannelModal = (props) => {
                       onChange={(value) => handleInputChange('name', value)}
                       autoComplete='new-password'
                     />
+
+                    <div className='py-3 border-t border-b border-gray-100'>
+                      <Text className='text-sm font-medium text-gray-500 mb-3 block'>
+                        {t('手动余额')}
+                      </Text>
+                      <Form.Switch
+                        field='manual_balance_enabled'
+                        label={t('启用手动余额')}
+                        checkedText={t('开')}
+                        uncheckedText={t('关')}
+                        initValue={inputs.manual_balance_enabled}
+                        onChange={(value) =>
+                          handleInputChange('manual_balance_enabled', value)
+                        }
+                      />
+                      {inputs.manual_balance_enabled && (
+                        <Row gutter={12}>
+                          <Col span={12}>
+                            <Form.InputNumber
+                              field='manual_balance_amount'
+                              label={t('手动余额金额')}
+                              placeholder='200'
+                              min={0}
+                              precision={2}
+                              style={{ width: '100%' }}
+                              onNumberChange={(value) =>
+                                handleInputChange(
+                                  'manual_balance_amount',
+                                  Number(value || 0),
+                                )
+                              }
+                            />
+                          </Col>
+                          <Col span={12}>
+                            <Form.Select
+                              field='manual_balance_reset_period'
+                              label={t('重置周期')}
+                              placeholder={t('请选择重置周期')}
+                              optionList={[
+                                { label: t('每天'), value: 'daily' },
+                                { label: t('每周'), value: 'weekly' },
+                                { label: t('每月'), value: 'monthly' },
+                                { label: t('每季度'), value: 'quarterly' },
+                              ]}
+                              style={{ width: '100%' }}
+                              value={
+                                inputs.manual_balance_reset_period || 'monthly'
+                              }
+                              onChange={(value) =>
+                                handleInputChange(
+                                  'manual_balance_reset_period',
+                                  value,
+                                )
+                              }
+                            />
+                          </Col>
+                        </Row>
+                      )}
+                    </div>
 
                     {inputs.type === 33 && (
                       <>
