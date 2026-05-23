@@ -439,6 +439,14 @@ func UpdateChannelBalance(c *gin.Context) {
 		})
 		return
 	}
+	if channel.ManualBalanceEnabled {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "manual balance enabled",
+			"balance": channel.Balance,
+		})
+		return
+	}
 	balance, err := updateChannelBalance(channel)
 	if err != nil {
 		common.ApiError(c, err)
@@ -462,6 +470,9 @@ func updateAllChannelsBalance() error {
 		}
 		if channel.ChannelInfo.IsMultiKey {
 			continue // skip multi-key channels
+		}
+		if channel.ManualBalanceEnabled {
+			continue
 		}
 		// TODO: support Azure
 		//if channel.Type != common.ChannelTypeOpenAI && channel.Type != common.ChannelTypeCustom {

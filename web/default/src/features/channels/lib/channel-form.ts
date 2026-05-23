@@ -49,6 +49,14 @@ export const channelFormSchema = z.object({
   header_override: z.string().optional(),
   settings: z.string().optional(),
   other: z.string().optional(),
+  manual_balance_enabled: z.boolean().optional(),
+  manual_balance_amount: z.coerce
+    .number()
+    .min(0, 'Manual balance amount must be at least 0')
+    .optional(),
+  manual_balance_reset_period: z
+    .enum(['daily', 'weekly', 'monthly', 'quarterly'])
+    .optional(),
   // Multi-key options (not sent to backend directly)
   multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
   multi_key_type: z.enum(['random', 'polling']).optional(),
@@ -108,6 +116,9 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   header_override: '',
   settings: '{}',
   other: '',
+  manual_balance_enabled: false,
+  manual_balance_amount: 0,
+  manual_balance_reset_period: 'monthly',
   multi_key_mode: 'single',
   multi_key_type: 'random',
   batch_add_set_key_prefix_2_name: false,
@@ -241,6 +252,10 @@ export function transformChannelToFormDefaults(
     header_override: channel.header_override || '',
     settings: channel.settings || '{}',
     other: channel.other || '',
+    manual_balance_enabled: channel.manual_balance_enabled === true,
+    manual_balance_amount: channel.manual_balance_amount || 0,
+    manual_balance_reset_period:
+      channel.manual_balance_reset_period || 'monthly',
     multi_key_mode: 'single',
     multi_key_type: channel.channel_info.multi_key_mode || 'random',
     batch_add_set_key_prefix_2_name: false,
@@ -422,6 +437,10 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     header_override: formData.header_override || null,
     settings: buildSettingsJSON(formData),
     other: formData.other || '',
+    manual_balance_enabled: formData.manual_balance_enabled === true,
+    manual_balance_amount: formData.manual_balance_amount || 0,
+    manual_balance_reset_period:
+      formData.manual_balance_reset_period || 'monthly',
   }
 
   // Clean up empty strings to null for optional fields
@@ -470,6 +489,10 @@ export function transformFormDataToUpdatePayload(
     header_override: formData.header_override || null,
     settings: buildSettingsJSON(formData),
     other: formData.other || '',
+    manual_balance_enabled: formData.manual_balance_enabled === true,
+    manual_balance_amount: formData.manual_balance_amount || 0,
+    manual_balance_reset_period:
+      formData.manual_balance_reset_period || 'monthly',
   }
 
   // Only include key if it was changed (not empty)

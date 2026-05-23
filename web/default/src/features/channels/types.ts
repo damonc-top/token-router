@@ -50,6 +50,12 @@ export const channelSchema = z.object({
   other: z.string().default(''),
   balance: z.number().default(0), // in USD
   balance_updated_time: z.number(),
+  manual_balance_enabled: z.boolean().default(false),
+  manual_balance_amount: z.number().default(0),
+  manual_balance_reset_period: z
+    .enum(['daily', 'weekly', 'monthly', 'quarterly'])
+    .default('monthly'),
+  manual_balance_next_reset_time: z.number().default(0),
   models: z.string().default(''),
   group: z.string().default('default'),
   used_quota: z.number().default(0),
@@ -318,6 +324,9 @@ export interface ChannelFormData {
   header_override?: string
   settings?: string
   other?: string
+  manual_balance_enabled?: boolean
+  manual_balance_amount?: number
+  manual_balance_reset_period?: 'daily' | 'weekly' | 'monthly' | 'quarterly'
   // Multi-key specific
   multi_key_mode?: 'single' | 'batch' | 'multi_to_single'
   multi_key_type?: 'random' | 'polling'

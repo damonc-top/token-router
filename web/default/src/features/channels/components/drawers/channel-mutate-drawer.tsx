@@ -395,6 +395,7 @@ export function ChannelMutateDrawer({
   const currentModels = form.watch('models')
   const currentModelMapping = form.watch('model_mapping')
   const awsKeyType = form.watch('aws_key_type')
+  const manualBalanceEnabled = form.watch('manual_balance_enabled')
   const upstreamModelUpdateCheckEnabled = form.watch(
     'upstream_model_update_check_enabled'
   )
@@ -1208,6 +1209,103 @@ export function ChannelMutateDrawer({
                       </FormItem>
                     )}
                   />
+                )}
+              </div>
+
+              {/* ── Manual Balance ── */}
+              <div className='bg-card space-y-4 rounded-xl border p-3 sm:p-5'>
+                <CardHeading
+                  title={t('Manual Balance')}
+                  icon={<RefreshCw className='h-4 w-4' />}
+                />
+                <FormField
+                  control={form.control}
+                  name='manual_balance_enabled'
+                  render={({ field }) => (
+                    <FormItem className='flex items-center justify-between rounded-lg border px-4 py-3'>
+                      <div className='space-y-0.5'>
+                        <FormLabel>{t('Manual balance')}</FormLabel>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value === true}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                {manualBalanceEnabled && (
+                  <div className='grid gap-4 sm:grid-cols-2'>
+                    <FormField
+                      control={form.control}
+                      name='manual_balance_amount'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Manual balance amount')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              min={0}
+                              step='0.01'
+                              placeholder='200'
+                              value={field.value ?? 0}
+                              onChange={(event) =>
+                                field.onChange(
+                                  Number(event.target.value || 0)
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='manual_balance_reset_period'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Reset period')}</FormLabel>
+                          <Select
+                            items={[
+                              { value: 'daily', label: t('Daily') },
+                              { value: 'weekly', label: t('Weekly') },
+                              { value: 'monthly', label: t('Monthly') },
+                              { value: 'quarterly', label: t('Quarterly') },
+                            ]}
+                            value={field.value || 'monthly'}
+                            onValueChange={field.onChange}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent alignItemWithTrigger={false}>
+                              <SelectGroup>
+                                <SelectItem value='daily'>
+                                  {t('Daily')}
+                                </SelectItem>
+                                <SelectItem value='weekly'>
+                                  {t('Weekly')}
+                                </SelectItem>
+                                <SelectItem value='monthly'>
+                                  {t('Monthly')}
+                                </SelectItem>
+                                <SelectItem value='quarterly'>
+                                  {t('Quarterly')}
+                                </SelectItem>
+                              </SelectGroup>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 )}
               </div>
 

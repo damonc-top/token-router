@@ -455,6 +455,10 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if channel == nil {
+		return fmt.Errorf("channel cannot be empty")
+	}
+
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
@@ -462,7 +466,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel == nil || channel.Key == "" {
+		if channel.Key == "" {
 			return fmt.Errorf("channel cannot be empty")
 		}
 
@@ -508,6 +512,13 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 				return fmt.Errorf("Codex key JSON must include account_id")
 			}
 		}
+	}
+
+	if channel.ManualBalanceEnabled {
+		if channel.ManualBalanceAmount < 0 {
+			return fmt.Errorf("手动余额不能小于 0")
+		}
+		channel.ManualBalanceResetPeriod = model.NormalizeChannelManualBalanceResetPeriod(channel.ManualBalanceResetPeriod)
 	}
 
 	return nil
@@ -602,6 +613,13 @@ func AddChannel(c *gin.Context) {
 	}
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
+	if err := model.ApplyChannelManualBalanceDefaults(addChannelRequest.Channel); err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
 	keys := make([]string, 0)
 	switch addChannelRequest.Mode {
 	case "multi_to_single":
@@ -860,13 +878,26 @@ type PatchChannel struct {
 	KeyMode      *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
 }
 
+func hasManualBalancePatch(fields map[string]json.RawMessage) bool {
+	_, enabledOk := fields["manual_balance_enabled"]
+	_, amountOk := fields["manual_balance_amount"]
+	_, periodOk := fields["manual_balance_reset_period"]
+	return enabledOk || amountOk || periodOk
+}
+
 func UpdateChannel(c *gin.Context) {
 	channel := PatchChannel{}
-	err := c.ShouldBindJSON(&channel)
+	body, err := c.GetRawData()
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	if err := common.Unmarshal(body, &channel); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var patchFields map[string]json.RawMessage
+	_ = common.Unmarshal(body, &patchFields)
 
 	// 使用统一的校验函数
 	if err := validateChannel(&channel.Channel, false); err != nil {
@@ -889,6 +920,30 @@ func UpdateChannel(c *gin.Context) {
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
 
+	manualBalanceTouched := hasManualBalancePatch(patchFields)
+	manualBalanceEnabled := originChannel.ManualBalanceEnabled
+	manualBalanceAmount := originChannel.ManualBalanceAmount
+	manualBalanceResetPeriod := originChannel.ManualBalanceResetPeriod
+	if manualBalanceTouched {
+		if _, ok := patchFields["manual_balance_enabled"]; ok {
+			manualBalanceEnabled = channel.ManualBalanceEnabled
+		}
+		if _, ok := patchFields["manual_balance_amount"]; ok {
+			manualBalanceAmount = channel.ManualBalanceAmount
+		}
+		if _, ok := patchFields["manual_balance_reset_period"]; ok {
+			manualBalanceResetPeriod = channel.ManualBalanceResetPeriod
+		}
+		if manualBalanceAmount < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "手动余额不能小于 0",
+			})
+			return
+		}
+		manualBalanceResetPeriod = model.NormalizeChannelManualBalanceResetPeriod(manualBalanceResetPeriod)
+	}
+
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
 		channel.ChannelInfo.MultiKeyMode = constant.MultiKeyMode(*channel.MultiKeyMode)
@@ -907,7 +962,7 @@ func UpdateChannel(c *gin.Context) {
 				if strings.HasPrefix(strings.TrimSpace(originChannel.Key), "[") {
 					// JSON数组格式
 					var arr []json.RawMessage
-					if err := json.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
+					if err := common.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
 						existingKeys = make([]string, len(arr))
 						for i, v := range arr {
 							existingKeys[i] = string(v)
@@ -978,6 +1033,16 @@ func UpdateChannel(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if manualBalanceTouched {
+		err = model.UpdateChannelManualBalanceConfig(channel.Id, manualBalanceEnabled, manualBalanceAmount, manualBalanceResetPeriod)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if refreshed, err := model.GetChannelById(channel.Id, true); err == nil {
+			channel.Channel = *refreshed
+		}
 	}
 	model.InitChannelCache()
 	service.ResetProxyClientCache()
