@@ -71,6 +71,7 @@ Current local branch: `afeng-mix`
 
 Local commits currently on this branch after `origin/main`:
 
+- `97387590` `Merge pull request #1 from damonc-top/dev_balance`
 - `2798bcbf` `fix:afeng版本修改`
 - `be511528` `启动脚本`
 - `f01a7394` `feature:新增大模型消息日志记录，分表存储`
@@ -223,6 +224,8 @@ docker run --name new-api -d --restart always \
 - ✅ Organization-level per-request, usage-based, and cache-hit cost accounting
 - ✅ Cache billing statistics for OpenAI, Azure, DeepSeek, Claude, Qwen, and supported models
 - ✅ Flexible billing policies for internal management or authorized enterprise customers
+- ✅ Channel manual balance control: admin-configurable balance amount with reset periods (`daily` / `weekly` / `monthly` / `quarterly`)
+- ✅ Channel remaining balance is updated immediately to the configured manual value when manual balance is enabled/edited
 
 ### 🔐 Authorization and Security
 
@@ -243,6 +246,7 @@ docker run --name new-api -d --restart always \
 
 **Intelligent Routing:**
 - ⚖️ Channel weighted random
+- ⚖️ Weighted random threshold for manual-balance channels: when `manual_balance_enabled=true` and balance `< 5 USD`, the channel is excluded from weighted random; when manual balance is disabled, the channel always participates regardless of balance
 - 🔄 Automatic retry on failure
 - 🚦 User-level model rate limiting
 
