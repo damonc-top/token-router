@@ -41,3 +41,4 @@ new-api-backup
 new-api-next
 cloudflared.log
 new-api.log
+.playwright-mcp
