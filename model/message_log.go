@@ -120,9 +120,10 @@ func getMessageLogTableSizeMB() int64 {
 	} else if common.UsingMySQL {
 		MSG_LOG_DB.Raw("SELECT COALESCE((DATA_LENGTH + INDEX_LENGTH), 0) / (1024*1024) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'message_logs'").Scan(&sizeMB)
 	} else {
-		var totalBytes int64
-		MSG_LOG_DB.Model(&MessageLog{}).Select("COALESCE(SUM(body_size), 0)").Scan(&totalBytes)
-		sizeMB = totalBytes / (1024 * 1024)
+		var pageCount, pageSize int64
+		MSG_LOG_DB.Raw("PRAGMA page_count").Scan(&pageCount)
+		MSG_LOG_DB.Raw("PRAGMA page_size").Scan(&pageSize)
+		sizeMB = (pageCount * pageSize) / (1024 * 1024)
 	}
 	return sizeMB
 }
@@ -140,5 +141,17 @@ func GetMessageLogCount() int64 {
 func DeleteAllMessageLogs() (int64, error) {
 	result := MSG_LOG_DB.Where("1 = 1").Delete(&MessageLog{})
 	return result.RowsAffected, result.Error
+}
+
+func VacuumMessageLogDB() error {
+	if !common.UsingSQLite {
+		return nil
+	}
+	sqlDB, err := MSG_LOG_DB.DB()
+	if err != nil {
+		return err
+	}
+	_, err = sqlDB.Exec("VACUUM")
+	return err
 }
 

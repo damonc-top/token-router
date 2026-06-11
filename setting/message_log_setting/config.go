@@ -26,6 +26,12 @@ func GetSetting() MessageLogSetting {
 	if s.RetentionDays < 1 {
 		s.RetentionDays = 1
 	}
+	if s.MaxSizeMB > 102400 {
+		s.MaxSizeMB = 102400
+	}
+	if s.MaxSizeMB < 1 {
+		s.MaxSizeMB = 1
+	}
 	return s
 }
 

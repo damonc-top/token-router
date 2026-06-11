@@ -17,12 +17,32 @@ func startCleanupLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		setting := message_log_setting.GetSetting()
-		if !setting.Enabled {
-			continue
-		}
-		cleanupByRetention(setting.RetentionDays)
-		cleanupByDiskSize(setting.MaxSizeMB)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					common.SysError(fmt.Sprintf("message_log: cleanup panic recovered: %v", r))
+				}
+			}()
+			setting := message_log_setting.GetSetting()
+			if !setting.Enabled {
+				return
+			}
+			cleanupByRetention(setting.RetentionDays)
+			cleanupByDiskSize(setting.MaxSizeMB)
+			vacuumIfSQLite()
+		}()
+	}
+}
+
+func vacuumIfSQLite() {
+	if !common.UsingSQLite {
+		return
+	}
+	// We can't run VACUUM through GORM with prepared statements enabled,
+	// so force a raw tx once per cleanup cycle.
+	err := model.VacuumMessageLogDB()
+	if err != nil {
+		common.SysError("message_log: VACUUM failed: " + err.Error())
 	}
 }
 
