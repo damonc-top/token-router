@@ -46,6 +46,7 @@ const ADVANCED_SETTINGS_FIELDS = new Set<FieldPath<ChannelFormValues>>([
   'allow_inference_geo',
   'allow_speed',
   'claude_beta_query',
+  'claude_code_safety_classifier_fallback_enabled',
   'upstream_model_update_check_enabled',
   'upstream_model_update_auto_sync_enabled',
   'upstream_model_update_ignored_models',

@@ -103,6 +103,9 @@ export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
   return ordered
 })()
 
+export const CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES =
+  new Set<number>([14, 35, 43])
+
 // ============================================================================
 // Channel Status (label values are i18n keys; use t(config.label) in components)
 // ============================================================================

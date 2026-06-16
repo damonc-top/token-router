@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 export {
   CHANNEL_OPTIONS,
+  CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
   MODEL_FETCHABLE_CHANNEL_TYPES,
   MODEL_TABLE_PAGE_SIZE,
 } from './channel.constants';

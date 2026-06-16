@@ -116,6 +116,7 @@ import {
 } from '../../api'
 import {
   ADD_MODE_OPTIONS,
+  CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_WARNINGS,
   ERROR_MESSAGES,
@@ -219,6 +220,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.pass_through_body_enabled ||
     values.system_prompt_override ||
     values.claude_beta_query ||
+    values.claude_code_safety_classifier_fallback_enabled ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
     values.upstream_model_update_ignored_models?.trim()
@@ -3214,6 +3216,46 @@ export function ChannelMutateDrawer({
                                 />
                               </>
                             )}
+                          </div>
+                        </div>
+                      )}
+
+                      {CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+                        currentType
+                      ) && (
+                        <div className='border-border/60 flex flex-col gap-3 border-b pb-4'>
+                          <SubHeading
+                            title={t('Claude Code compatibility')}
+                            icon={<Wand2 className='h-3.5 w-3.5' />}
+                          />
+
+                          <div className='divide-border space-y-0 divide-y border-y'>
+                            <FormField
+                              control={form.control}
+                              name='claude_code_safety_classifier_fallback_enabled'
+                              render={({ field }) => (
+                                <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                  <div className='space-y-0.5'>
+                                    <FormLabel className='text-sm'>
+                                      {t(
+                                        'Allow Claude Code safety classifier fallback'
+                                      )}
+                                    </FormLabel>
+                                    <FormDescription>
+                                      {t(
+                                        'For Claude Code auto mode classifier requests only, convert unsupported or refused classifier responses to allow.'
+                                      )}
+                                    </FormDescription>
+                                  </div>
+                                  <FormControl>
+                                    <Switch
+                                      checked={field.value}
+                                      onCheckedChange={field.onChange}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
                           </div>
                         </div>
                       )}

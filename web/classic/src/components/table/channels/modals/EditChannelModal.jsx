@@ -27,7 +27,11 @@ import {
   verifyJSON,
 } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import { CHANNEL_OPTIONS, MODEL_FETCHABLE_CHANNEL_TYPES } from '../../../../constants';
+import {
+  CHANNEL_OPTIONS,
+  CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
+  MODEL_FETCHABLE_CHANNEL_TYPES,
+} from '../../../../constants';
 import {
   SideSheet,
   Space,
@@ -213,6 +217,7 @@ const EditChannelModal = (props) => {
     allow_inference_geo: false,
     allow_speed: false,
     claude_beta_query: false,
+    claude_code_safety_classifier_fallback_enabled: false,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
     upstream_model_update_last_check_time: 0,
@@ -914,6 +919,9 @@ const EditChannelModal = (props) => {
             parsedSettings.allow_inference_geo || false;
           data.allow_speed = parsedSettings.allow_speed || false;
           data.claude_beta_query = parsedSettings.claude_beta_query || false;
+          data.claude_code_safety_classifier_fallback_enabled =
+            parsedSettings.claude_code_safety_classifier_fallback_enabled ||
+            false;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
           data.upstream_model_update_auto_sync_enabled =
@@ -944,6 +952,7 @@ const EditChannelModal = (props) => {
           data.allow_inference_geo = false;
           data.allow_speed = false;
           data.claude_beta_query = false;
+          data.claude_code_safety_classifier_fallback_enabled = false;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
           data.upstream_model_update_last_check_time = 0;
@@ -962,6 +971,7 @@ const EditChannelModal = (props) => {
         data.allow_inference_geo = false;
         data.allow_speed = false;
         data.claude_beta_query = false;
+        data.claude_code_safety_classifier_fallback_enabled = false;
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
         data.upstream_model_update_last_check_time = 0;
@@ -1044,6 +1054,7 @@ const EditChannelModal = (props) => {
         data.pass_through_body_enabled ||
         data.force_format ||
         data.claude_beta_query ||
+        data.claude_code_safety_classifier_fallback_enabled ||
         data.system_prompt_override;
       if (hasAdvancedValues) {
         setAdvancedSettingsOpen(true);
@@ -1821,6 +1832,19 @@ const EditChannelModal = (props) => {
       }
     }
 
+    if (
+      CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+        localInputs.type,
+      )
+    ) {
+      settings.claude_code_safety_classifier_fallback_enabled =
+        localInputs.claude_code_safety_classifier_fallback_enabled === true;
+    } else if (
+      'claude_code_safety_classifier_fallback_enabled' in settings
+    ) {
+      delete settings.claude_code_safety_classifier_fallback_enabled;
+    }
+
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
     settings.upstream_model_update_auto_sync_enabled =
@@ -1866,6 +1890,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
     delete localInputs.claude_beta_query;
+    delete localInputs.claude_code_safety_classifier_fallback_enabled;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
     delete localInputs.upstream_model_update_last_check_time;
@@ -2523,6 +2548,31 @@ const EditChannelModal = (props) => {
                       <Form.Switch field='allow_service_tier' label={t('允许 service_tier 透传')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('allow_service_tier', value)} extraText={t('service_tier 字段用于指定服务层级，允许透传可能导致实际计费高于预期。默认关闭以避免额外费用')} />
                       <Form.Switch field='allow_inference_geo' label={t('允许 inference_geo 透传')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('allow_inference_geo', value)} extraText={t('inference_geo 字段用于控制 Claude 数据驻留推理区域。默认关闭以避免未经授权透传地域信息')} />
                       <Form.Switch field='allow_speed' label={t('允许 speed 透传')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('allow_speed', value)} extraText={t('speed 字段用于控制 Claude 推理速度模式。默认关闭以避免意外切换到 fast 模式')} />
+                    </>
+                  )}
+
+                  {CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+                    inputs.type,
+                  ) && (
+                    <>
+                      <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
+                        {t('Claude Code 兼容性')}
+                      </div>
+                      <Form.Switch
+                        field='claude_code_safety_classifier_fallback_enabled'
+                        label={t('Claude Code 安全分类器兜底放行')}
+                        checkedText={t('开')}
+                        uncheckedText={t('关')}
+                        onChange={(value) =>
+                          handleChannelOtherSettingsChange(
+                            'claude_code_safety_classifier_fallback_enabled',
+                            value,
+                          )
+                        }
+                        extraText={t(
+                          '仅针对 Claude Code auto mode 分类器请求，将不支持或拒绝的分类器响应改为通过。明确返回 block=yes 或 block=no 时不会覆盖。',
+                        )}
+                      />
                     </>
                   )}
                 </div>
