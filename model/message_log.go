@@ -2,6 +2,7 @@ package model
 
 import (
 	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
 )
 
 type MessageLog struct {
@@ -86,12 +87,14 @@ func DeleteMessageLogsBefore(timestamp int64) (int64, error) {
 	var total int64
 	batchSize := 500
 	for {
-		result := MSG_LOG_DB.Where("created_at < ?", timestamp).Limit(batchSize).Delete(&MessageLog{})
-		if result.Error != nil {
-			return total, result.Error
+		deleted, err := deleteMessageLogBatch(func(tx *gorm.DB) *gorm.DB {
+			return tx.Where("created_at < ?", timestamp).Order("created_at ASC")
+		}, batchSize)
+		if err != nil {
+			return total, err
 		}
-		total += result.RowsAffected
-		if result.RowsAffected < int64(batchSize) {
+		total += deleted
+		if deleted < int64(batchSize) {
 			break
 		}
 	}
@@ -99,7 +102,32 @@ func DeleteMessageLogsBefore(timestamp int64) (int64, error) {
 }
 
 func DeleteOldestMessageLogs(limit int) (int64, error) {
-	result := MSG_LOG_DB.Order("created_at ASC").Limit(limit).Delete(&MessageLog{})
+	return deleteMessageLogBatch(func(tx *gorm.DB) *gorm.DB {
+		return tx.Order("created_at ASC")
+	}, limit)
+}
+
+func deleteMessageLogBatch(scope func(*gorm.DB) *gorm.DB, limit int) (int64, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	ids := make([]int, 0, limit)
+	query := MSG_LOG_DB.Session(&gorm.Session{SkipDefaultTransaction: true}).
+		Model(&MessageLog{}).
+		Select("id").
+		Limit(limit)
+	if scope != nil {
+		query = scope(query)
+	}
+	if err := query.Pluck("id", &ids).Error; err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := MSG_LOG_DB.Session(&gorm.Session{SkipDefaultTransaction: true}).
+		Where("id IN ?", ids).
+		Delete(&MessageLog{})
 	return result.RowsAffected, result.Error
 }
 
@@ -154,4 +182,3 @@ func VacuumMessageLogDB() error {
 	_, err = sqlDB.Exec("VACUUM")
 	return err
 }
-

@@ -27,9 +27,11 @@ func startCleanupLoop() {
 			if !setting.Enabled {
 				return
 			}
-			cleanupByRetention(setting.RetentionDays)
-			cleanupByDiskSize(setting.MaxSizeMB)
-			vacuumIfSQLite()
+			deleted := cleanupByRetention(setting.RetentionDays)
+			deleted += cleanupByDiskSize(setting.MaxSizeMB)
+			if deleted > 0 {
+				vacuumIfSQLite()
+			}
 		}()
 	}
 }
@@ -46,38 +48,42 @@ func vacuumIfSQLite() {
 	}
 }
 
-func cleanupByRetention(retentionDays int) {
+func cleanupByRetention(retentionDays int) int64 {
 	if retentionDays <= 0 {
-		return
+		return 0
 	}
 	cutoff := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
 	deleted, err := model.DeleteMessageLogsBefore(cutoff)
 	if err != nil {
 		common.SysError("message_log: cleanup by retention failed: " + err.Error())
-		return
+		return 0
 	}
 	if deleted > 0 {
 		common.SysLog(fmt.Sprintf("message_log: cleaned up %d expired records", deleted))
 	}
+	return deleted
 }
 
-func cleanupByDiskSize(maxSizeMB int) {
+func cleanupByDiskSize(maxSizeMB int) int64 {
 	if maxSizeMB <= 0 {
-		return
+		return 0
 	}
 	currentSizeMB := model.GetMessageLogTableSizeMB()
 	if currentSizeMB <= int64(maxSizeMB) {
-		return
+		return 0
 	}
+	var totalDeleted int64
 	for currentSizeMB > int64(maxSizeMB) {
 		deleted, err := model.DeleteOldestMessageLogs(200)
 		if err != nil {
 			common.SysError("message_log: cleanup by disk size failed: " + err.Error())
-			return
+			return totalDeleted
 		}
 		if deleted == 0 {
 			break
 		}
+		totalDeleted += deleted
 		currentSizeMB = model.GetMessageLogTableSizeMB()
 	}
+	return totalDeleted
 }

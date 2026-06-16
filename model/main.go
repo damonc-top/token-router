@@ -266,7 +266,8 @@ func InitLogDB() (err error) {
 func InitMsgLogDB() error {
 	if common.UsingSQLite {
 		db, err := gorm.Open(sqlite.Open(common.MsgLogSQLitePath), &gorm.Config{
-			PrepareStmt: true,
+			PrepareStmt:            false,
+			SkipDefaultTransaction: true,
 		})
 		if err != nil {
 			return err

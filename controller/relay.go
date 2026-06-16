@@ -65,6 +65,38 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 	return err
 }
 
+func ClaudeCountTokens(c *gin.Context) {
+	request, err := helper.GetAndValidateRequest(c, types.RelayFormatClaude)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type":  "error",
+			"error": types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry()).ToClaudeError(),
+		})
+		return
+	}
+
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatClaude, request, nil)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type":  "error",
+			"error": types.NewError(err, types.ErrorCodeGenRelayInfoFailed, types.ErrOptionWithSkipRetry()).ToClaudeError(),
+		})
+		return
+	}
+	relayInfo.RelayMode = relayconstant.RelayModeClaudeCountTokens
+
+	tokens, err := service.EstimateRequestTokenForced(c, request.GetTokenCountMeta(), relayInfo)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"type":  "error",
+			"error": types.NewError(err, types.ErrorCodeCountTokenFailed, types.ErrOptionWithSkipRetry()).ToClaudeError(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"input_tokens": tokens})
+}
+
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	requestId := c.GetString(common.RequestIdKey)
