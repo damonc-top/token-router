@@ -19,8 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { flexRender, type Cell, type Table } from '@tanstack/react-table'
 import { Database } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatTimestampToDate } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
+import {
+  dotColorMap,
+  textColorMap,
+  type StatusVariant,
+} from '@/components/status-badge'
 import {
   Empty,
   EmptyDescription,
@@ -34,6 +38,9 @@ import {
   textColorMap,
   type StatusVariant,
 } from '@/components/status-badge'
+import { formatTimestampToDate } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import { LOG_TYPE_ENUM } from '../constants'
 import { getLogTypeConfig } from '../lib/utils'
 import type { LogCategory } from '../types'
@@ -206,7 +213,7 @@ const rowData = cells.get('created_at')?.row.original as
         <SummaryField
           label={t('Channel')}
           cell={cells.get('channel')}
-          primaryOnly
+          valueClassName='[&_.flex-col]:max-w-none'
         />
         <SummaryField label={t('User')} cell={cells.get('user')} primaryOnly />
         <SummaryField

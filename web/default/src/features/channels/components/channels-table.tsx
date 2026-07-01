@@ -16,36 +16,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  useState,
-  useMemo,
-  useEffect,
-  useRef,
-  type ChangeEvent,
-  type CompositionEvent,
-} from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import {
-  getCoreRowModel,
-  useReactTable,
-  getExpandedRowModel,
-  type OnChangeFn,
-  type SortingState,
-  type VisibilityState,
-  type ExpandedState,
-  type Row,
-} from '@tanstack/react-table'
-import { useDebounce, useMediaQuery } from '@/hooks'
+import type { OnChangeFn, SortingState, Row } from '@tanstack/react-table'
+import { Eye, EyeOff } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getLobeIcon } from '@/lib/lobe-icon'
-import { useTableUrlState } from '@/hooks/use-table-url-state'
-import { Input } from '@/components/ui/input'
+
 import {
   DISABLED_ROW_DESKTOP,
   DISABLED_ROW_MOBILE,
   DataTablePage,
+  useDebouncedColumnFilter,
+  useDataTable,
 } from '@/components/data-table'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useMediaQuery } from '@/hooks'
+import { useTableUrlState } from '@/hooks/use-table-url-state'
+import { getLobeIcon } from '@/lib/lobe-icon'
+
 import { getChannels, searchChannels, getGroups } from '../api'
 import {
   DEFAULT_PAGE_SIZE,
@@ -60,11 +55,14 @@ import {
   getChannelTypeLabel,
 } from '../lib'
 import type { Channel, ChannelSortBy } from '../types'
+import { ChannelCard } from './channel-card'
 import { useChannelsColumns } from './channels-columns'
 import { useChannels } from './channels-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 
 const route = getRouteApi('/_authenticated/channels/')
+const CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY = 'channels:column-visibility'
+const CHANNELS_VIEW_MODE_STORAGE_KEY = 'channels:view-mode'
 
 const CHANNEL_SORTABLE_COLUMNS = new Set<ChannelSortBy>([
   'id',
@@ -83,17 +81,17 @@ function isDisabledChannelRow(channel: Channel) {
 
 export function ChannelsTable() {
   const { t } = useTranslation()
-  const { enableTagMode, idSort } = useChannels()
+  const {
+    enableTagMode,
+    idSort,
+    batchMode,
+    sensitiveVisible,
+    setSensitiveVisible,
+  } = useChannels()
   const isMobile = useMediaQuery('(max-width: 640px)')
 
   // Table state
   const [sorting, setSorting] = useState<SortingState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    models: false,
-    tag: false,
-  })
-  const [rowSelection, setRowSelection] = useState({})
-  const [expanded, setExpanded] = useState<ExpandedState>({})
 
   // URL state management
   const {
@@ -123,71 +121,24 @@ export function ChannelsTable() {
   // Extract filters from column filters
   const statusFilter =
     (columnFilters.find((f) => f.id === 'status')?.value as string[]) || []
-  const typeFilter =
-    (columnFilters.find((f) => f.id === 'type')?.value as string[]) || []
+  const typeFilter = useMemo(
+    () => (columnFilters.find((f) => f.id === 'type')?.value as string[]) || [],
+    [columnFilters]
+  )
   const groupFilter =
     (columnFilters.find((f) => f.id === 'group')?.value as string[]) || []
-  const modelFilterFromUrl =
-    (columnFilters.find((f) => f.id === 'model')?.value as string) || ''
-
-  // Local state for immediate input feedback
-  const isModelFilterComposingRef = useRef(false)
-  const [modelFilterInput, setModelFilterInput] = useState(modelFilterFromUrl)
-  const [modelFilterPendingValue, setModelFilterPendingValue] =
-    useState(modelFilterFromUrl)
-  const debouncedModelFilter = useDebounce(modelFilterPendingValue, 500)
-
-  // Sync local input with URL when URL changes (e.g., from back/forward navigation)
-  useEffect(() => {
-    if (!isModelFilterComposingRef.current) {
-      setModelFilterInput(modelFilterFromUrl)
-    }
-    setModelFilterPendingValue(modelFilterFromUrl)
-  }, [modelFilterFromUrl])
-
-  // Update URL when debounced value changes
-  useEffect(() => {
-    if (
-      debouncedModelFilter === modelFilterPendingValue &&
-      debouncedModelFilter !== modelFilterFromUrl
-    ) {
-      onColumnFiltersChange((prev) => {
-        const filtered = prev.filter((f) => f.id !== 'model')
-        return debouncedModelFilter
-          ? [...filtered, { id: 'model', value: debouncedModelFilter }]
-          : filtered
-      })
-    }
-  }, [
-    debouncedModelFilter,
-    modelFilterFromUrl,
-    modelFilterPendingValue,
+  const {
+    value: modelFilter,
+    inputValue: modelFilterInput,
+    onChange: onModelFilterInputChange,
+    onCompositionStart: onModelFilterCompositionStart,
+    onCompositionEnd: onModelFilterCompositionEnd,
+    resetInput: resetModelFilterInput,
+  } = useDebouncedColumnFilter({
+    columnFilters,
+    columnId: 'model',
     onColumnFiltersChange,
-  ])
-
-  const handleModelFilterChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value
-    setModelFilterInput(value)
-
-    if (!isModelFilterComposingRef.current) {
-      setModelFilterPendingValue(value)
-    }
-  }
-
-  const handleModelFilterCompositionStart = () => {
-    isModelFilterComposingRef.current = true
-  }
-
-  const handleModelFilterCompositionEnd = (
-    event: CompositionEvent<HTMLInputElement>
-  ) => {
-    isModelFilterComposingRef.current = false
-    const value = event.currentTarget.value
-    setModelFilterInput(value)
-    setModelFilterPendingValue(value)
-  }
-
-  const modelFilter = modelFilterFromUrl
+  })
 
   // Determine whether to use search or regular list API
   const shouldSearch = Boolean(globalFilter?.trim() || modelFilter.trim())
@@ -319,43 +270,42 @@ export function ChannelsTable() {
   const typeCounts = data?.data?.type_counts
 
   // Columns configuration
-  const columns = useChannelsColumns()
+  const columns = useChannelsColumns({ enableSelection: batchMode })
 
   // React Table instance
-  const table = useReactTable({
+  const { table } = useDataTable({
     data: channels,
     columns,
-    pageCount: Math.ceil(totalCount / pagination.pageSize),
-    state: {
-      sorting,
-      columnFilters,
-      columnVisibility,
-      rowSelection,
-      pagination,
-      expanded,
-      globalFilter,
+    totalCount,
+    sorting,
+    initialColumnVisibility: {
+      models: false,
+      tag: false,
     },
-    enableRowSelection: (row: Row<Channel>) => !isTagAggregateRow(row.original),
-    onRowSelectionChange: setRowSelection,
+    columnVisibilityStorageKey: CHANNELS_COLUMN_VISIBILITY_STORAGE_KEY,
+    columnFilters,
+    pagination,
+    globalFilter,
+    enableRowSelection: batchMode
+      ? (row: Row<Channel>) => !isTagAggregateRow(row.original)
+      : false,
     onSortingChange: handleSortingChange,
     onColumnFiltersChange,
-    onColumnVisibilityChange: setColumnVisibility,
     onPaginationChange,
-    onExpandedChange: setExpanded,
     onGlobalFilterChange,
-    getCoreRowModel: getCoreRowModel(),
-    getExpandedRowModel: getExpandedRowModel(),
     getSubRows: (row: Channel & { children?: Channel[] }) => row.children,
     manualPagination: true,
     manualSorting: true,
     manualFiltering: true,
+    withExpandedRowModel: true,
+    ensurePageInRange,
   })
 
-  // Ensure page is in range when total count changes
-  const pageCount = table.getPageCount()
   useEffect(() => {
-    ensurePageInRange(pageCount)
-  }, [pageCount, ensurePageInRange])
+    if (!batchMode) {
+      table.resetRowSelection()
+    }
+  }, [batchMode, table])
 
   // Prepare filter options from existing channel types only.
   const typeFilterOptions = useMemo(() => {
@@ -411,7 +361,10 @@ export function ChannelsTable() {
 
   const groupFilterOptions = [
     { label: t('All Groups'), value: 'all' },
-    ...groupOptions,
+    ...groupOptions.map((option) => ({
+      ...option,
+      label: sensitiveVisible ? option.label : '••••',
+    })),
   ]
 
   return (
@@ -425,22 +378,26 @@ export function ChannelsTable() {
         'No channels available. Create your first channel to get started.'
       )}
       skeletonKeyPrefix='channel-skeleton'
+      enableCardView
+      viewModeStorageKey={CHANNELS_VIEW_MODE_STORAGE_KEY}
+      renderCard={(row, { isSelected }) => (
+        <ChannelCard row={row} isSelected={isSelected} />
+      )}
+      cardGridClassName='grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-3'
       applyHeaderSize
       toolbarProps={{
         searchPlaceholder: t('Filter by name, ID, or key...'),
         searchDebounceMs: 500,
         onReset: () => {
-          isModelFilterComposingRef.current = false
-          setModelFilterInput('')
-          setModelFilterPendingValue('')
+          resetModelFilterInput()
         },
         additionalSearch: (
           <Input
             placeholder={t('Filter by model...')}
             value={modelFilterInput}
-            onChange={handleModelFilterChange}
-            onCompositionStart={handleModelFilterCompositionStart}
-            onCompositionEnd={handleModelFilterCompositionEnd}
+            onChange={onModelFilterInputChange}
+            onCompositionStart={onModelFilterCompositionStart}
+            onCompositionEnd={onModelFilterCompositionEnd}
             className='w-full sm:w-[150px] lg:w-[180px]'
           />
         ),
@@ -464,15 +421,37 @@ export function ChannelsTable() {
             singleSelect: true,
           },
         ],
+        preActions: (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  onClick={() => setSensitiveVisible(!sensitiveVisible)}
+                  aria-label={sensitiveVisible ? t('Hide') : t('Show')}
+                  className='text-muted-foreground hover:text-foreground size-8'
+                />
+              }
+            >
+              {sensitiveVisible ? <Eye /> : <EyeOff />}
+            </TooltipTrigger>
+            <TooltipContent>
+              {sensitiveVisible ? t('Hide') : t('Show')}
+            </TooltipContent>
+          </Tooltip>
+        ),
       }}
-      getRowClassName={(row, { isMobile }) =>
-        isDisabledChannelRow(row.original)
-          ? isMobile
-            ? DISABLED_ROW_MOBILE
-            : DISABLED_ROW_DESKTOP
-          : undefined
-      }
-      bulkActions={<DataTableBulkActions table={table} />}
+      getRowClassName={(row, { isMobile }) => {
+        if (!isDisabledChannelRow(row.original)) {
+          return undefined
+        }
+        if (isMobile) {
+          return DISABLED_ROW_MOBILE
+        }
+        return DISABLED_ROW_DESKTOP
+      }}
+      bulkActions={batchMode ? <DataTableBulkActions table={table} /> : null}
     />
   )
 }

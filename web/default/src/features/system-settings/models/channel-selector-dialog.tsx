@@ -16,18 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  useReactTable,
-  type ColumnDef,
-  type RowSelectionState,
-} from '@tanstack/react-table'
+import { type ColumnDef, type RowSelectionState } from '@tanstack/react-table'
 import { Search } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
+import {
+  DataTablePagination,
+  DataTableView,
+  useDataTable,
+} from '@/components/data-table'
+import { Dialog } from '@/components/dialog'
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -39,17 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { DataTablePagination } from '@/components/data-table/pagination'
-import { Dialog } from '@/components/dialog'
-import { StatusBadge } from '@/components/status-badge'
+
 import type { UpstreamChannel } from '../types'
 import {
   CHANNEL_STATUS_CONFIG,
@@ -295,23 +285,16 @@ export function ChannelSelectorDialog({
     })
   }, [filteredChannels])
 
-  const table = useReactTable({
+  const { table } = useDataTable({
     data: sortedChannels,
     columns,
-    state: {
-      rowSelection,
-    },
+    rowSelection,
     getRowId: (row) => row.id.toString(),
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
-    },
+    initialPagination: { pageIndex: 0, pageSize: 10 },
+    withSortedRowModel: false,
+    withFacetedRowModel: false,
   })
 
   const handleConfirm = () => {
@@ -355,54 +338,12 @@ export function ChannelSelectorDialog({
           </div>
         </div>
 
-        <div className='flex-1 overflow-auto rounded-md border'>
-          <Table>
-            <TableHeader>
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && 'selected'}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={columns.length}
-                    className='h-24 text-center'
-                  >
-                    {t('No channels found')}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
+        <DataTableView
+          table={table}
+          containerClassName='flex-1 overflow-auto rounded-md'
+          emptyContent={t('No channels found')}
+          emptyCellClassName='h-24 text-center'
+        />
 
         <DataTablePagination table={table} />
       </div>

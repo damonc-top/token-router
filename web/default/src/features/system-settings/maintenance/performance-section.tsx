@@ -16,14 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import * as z from 'zod'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { api } from '@/lib/api'
-import dayjs from '@/lib/dayjs'
+import * as z from 'zod'
+
+import { StatusBadge } from '@/components/status-badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -47,19 +47,11 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
-import { StatusBadge } from '@/components/status-badge'
+import { api } from '@/lib/api'
+
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -182,27 +174,20 @@ const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
 })
 
 function formatBytes(bytes: number, decimals = 2): string {
-  if (!bytes || isNaN(bytes)) return '0 Bytes'
+  if (!bytes || Number.isNaN(bytes)) return '0 Bytes'
   if (bytes === 0) return '0 Bytes'
-  if (bytes < 0) return '-' + formatBytes(-bytes, decimals)
+  if (bytes < 0) return `-${formatBytes(-bytes, decimals)}`
   const k = 1024
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k))
-  if (i < 0 || i >= sizes.length) return bytes + ' Bytes'
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i]
+  if (i < 0 || i >= sizes.length) return `${bytes} Bytes`
+  return `${Number.parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${
+    sizes[i]
+  }`
 }
 
 interface Props {
   defaultValues: FlatPerfDefaults
-}
-
-type LogInfo = {
-  enabled: boolean
-  log_dir: string
-  file_count: number
-  total_size: number
-  oldest_time?: string
-  newest_time?: string
 }
 
 type PerformanceStats = {
@@ -364,35 +349,6 @@ export function PerformanceSection(props: Props) {
       }
     } catch {
       toast.error(t('GC execution failed'))
-    }
-  }
-
-  const cleanupLogFiles = async () => {
-    if (!logCleanupValue || isNaN(logCleanupValue) || logCleanupValue < 1) {
-      toast.error(t('Please enter a valid number'))
-      return
-    }
-    setLogCleanupLoading(true)
-    try {
-      const res = await api.delete(
-        `/api/performance/logs?mode=${logCleanupMode}&value=${logCleanupValue}`
-      )
-      if (res.data.success) {
-        const { deleted_count, freed_bytes } = res.data.data
-        toast.success(
-          t('Cleaned up {{count}} log files, freed {{size}}', {
-            count: deleted_count,
-            size: formatBytes(freed_bytes),
-          })
-        )
-      } else {
-        toast.error(res.data.message || t('Cleanup failed'))
-      }
-      fetchLogInfo()
-    } catch {
-      toast.error(t('Cleanup failed'))
-    } finally {
-      setLogCleanupLoading(false)
     }
   }
 
@@ -639,115 +595,10 @@ export function PerformanceSection(props: Props) {
               )}
             />
           </div>
-
-          <Separator />
-
-          <div>
-            <h4 className='font-medium'>{t('Model performance metrics')}</h4>
-            <p className='text-muted-foreground mt-1 text-xs'>
-              {t(
-                'Collect relay latency and success-rate metrics for the model square.'
-              )}
-            </p>
-          </div>
-
-          <div className='grid grid-cols-1 gap-4 md:grid-cols-4'>
-            <FormField
-              control={form.control}
-              name='perf_metrics_setting.enabled'
-              render={({ field }) => (
-                <SettingsSwitchItem>
-                  <SettingsSwitchContent>
-                    <FormLabel>
-                      {t('Enable model performance metrics')}
-                    </FormLabel>
-                  </SettingsSwitchContent>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </SettingsSwitchItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name='perf_metrics_setting.flush_interval'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Flush interval (minutes)')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      min={1}
-                      step={1}
-                      {...safeNumberFieldProps(field)}
-                      disabled={!perfMetricsEnabled}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name='perf_metrics_setting.bucket_time'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Aggregation bucket')}</FormLabel>
-                  <Select
-                    items={[
-                      { value: 'minute', label: t('1 minute') },
-                      { value: '5min', label: t('5 minutes') },
-                      { value: 'hour', label: t('1 hour') },
-                    ]}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                    disabled={!perfMetricsEnabled}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent alignItemWithTrigger={false}>
-                      <SelectGroup>
-                        <SelectItem value='minute'>{t('1 minute')}</SelectItem>
-                        <SelectItem value='5min'>{t('5 minutes')}</SelectItem>
-                        <SelectItem value='hour'>{t('1 hour')}</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name='perf_metrics_setting.retention_days'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Retention days')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      type='number'
-                      min={0}
-                      step={1}
-                      {...safeNumberFieldProps(field)}
-                      disabled={!perfMetricsEnabled}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('0 means data is kept permanently')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
         </SettingsForm>
       </Form>
+
+      <Separator />
 
       <Separator />
 
@@ -1038,8 +889,6 @@ export function PerformanceSection(props: Props) {
         )}
       </div>
 
-      <Separator />
-
       {/* Performance Stats Dashboard */}
       <div className='space-y-4'>
         <div className='flex items-center gap-2'>
@@ -1064,7 +913,10 @@ export function PerformanceSection(props: Props) {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
-                <AlertDialogAction onClick={clearDiskCache}>
+                <AlertDialogAction
+                  variant='destructive'
+                  onClick={clearDiskCache}
+                >
                   {t('Confirm')}
                 </AlertDialogAction>
               </AlertDialogFooter>

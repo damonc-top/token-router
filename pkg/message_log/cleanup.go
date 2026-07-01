@@ -37,7 +37,7 @@ func startCleanupLoop() {
 }
 
 func vacuumIfSQLite() {
-	if !common.UsingSQLite {
+	if !common.UsingLogDatabase(common.DatabaseTypeSQLite) {
 		return
 	}
 	// We can't run VACUUM through GORM with prepared statements enabled,

@@ -143,11 +143,12 @@ func GetMessageLogStats() (*MessageLogStats, error) {
 
 func getMessageLogTableSizeMB() int64 {
 	var sizeMB int64
-	if common.UsingPostgreSQL {
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
 		MSG_LOG_DB.Raw("SELECT COALESCE(pg_total_relation_size('message_logs'), 0) / (1024*1024)").Scan(&sizeMB)
-	} else if common.UsingMySQL {
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
 		MSG_LOG_DB.Raw("SELECT COALESCE((DATA_LENGTH + INDEX_LENGTH), 0) / (1024*1024) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'message_logs'").Scan(&sizeMB)
-	} else {
+	default:
 		var pageCount, pageSize int64
 		MSG_LOG_DB.Raw("PRAGMA page_count").Scan(&pageCount)
 		MSG_LOG_DB.Raw("PRAGMA page_size").Scan(&pageSize)
@@ -172,7 +173,7 @@ func DeleteAllMessageLogs() (int64, error) {
 }
 
 func VacuumMessageLogDB() error {
-	if !common.UsingSQLite {
+	if !common.UsingLogDatabase(common.DatabaseTypeSQLite) {
 		return nil
 	}
 	sqlDB, err := MSG_LOG_DB.DB()
