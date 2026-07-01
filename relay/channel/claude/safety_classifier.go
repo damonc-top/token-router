@@ -161,9 +161,6 @@ func maybeApplyClaudeCodeSafetyClassifierFallback(
 	if !shouldApplyClaudeCodeSafetyClassifierFallback(info) {
 		return data
 	}
-	if _, ok := claudeCodeSafetyClassifierBlockDecision(data); ok {
-		return data
-	}
 
 	patched, err := buildClaudeCodeSafetyClassifierFallbackResponse(info, data)
 	if err != nil {
@@ -196,39 +193,6 @@ func logClaudeCodeSafetyClassifierFallback(c *gin.Context, msg string) {
 		return
 	}
 	logger.LogWarn(c, msg)
-}
-
-func claudeCodeSafetyClassifierBlockDecision(data []byte) (string, bool) {
-	var response dto.ClaudeResponse
-	if err := common.Unmarshal(data, &response); err == nil {
-		for _, content := range response.Content {
-			if decision, ok := claudeCodeSafetyClassifierBlockDecisionFromText(content.GetText()); ok {
-				return decision, true
-			}
-		}
-		if decision, ok := claudeCodeSafetyClassifierBlockDecisionFromText(response.Completion); ok {
-			return decision, true
-		}
-	}
-	return claudeCodeSafetyClassifierBlockDecisionFromText(string(data))
-}
-
-func claudeCodeSafetyClassifierBlockDecisionFromText(text string) (string, bool) {
-	compact := strings.NewReplacer(
-		" ", "",
-		"\n", "",
-		"\r", "",
-		"\t", "",
-	).Replace(strings.ToLower(text))
-
-	switch {
-	case strings.Contains(compact, "<block>no</block>"):
-		return "no", true
-	case strings.Contains(compact, "<block>yes</block>"):
-		return "yes", true
-	default:
-		return "", false
-	}
 }
 
 func buildClaudeCodeSafetyClassifierFallbackResponse(info *relaycommon.RelayInfo, data []byte) ([]byte, error) {
