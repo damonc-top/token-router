@@ -82,12 +82,16 @@ var channelOperationalFields = map[string]struct{}{
 // channelReadOnlyFields lists server-managed/accounting fields that the general
 // channel edit endpoint must ignore even if a client sends them.
 var channelReadOnlyFields = map[string]struct{}{
-	"created_time":         {},
-	"test_time":            {},
-	"response_time":        {},
-	"balance":              {},
-	"balance_updated_time": {},
-	"used_quota":           {},
+	"created_time":                  {},
+	"test_time":                     {},
+	"response_time":                 {},
+	"balance":                       {},
+	"balance_updated_time":          {},
+	"used_quota":                    {},
+	"manual_balance_enabled":        {},
+	"manual_balance_amount":         {},
+	"manual_balance_reset_period":   {},
+	"manual_balance_next_reset_time": {},
 }
 
 func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]any) {
@@ -108,6 +112,18 @@ func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]an
 	}
 	if _, ok := requestData["used_quota"]; ok {
 		channel.UsedQuota = 0
+	}
+	if _, ok := requestData["manual_balance_enabled"]; ok {
+		channel.ManualBalanceEnabled = false
+	}
+	if _, ok := requestData["manual_balance_amount"]; ok {
+		channel.ManualBalanceAmount = 0
+	}
+	if _, ok := requestData["manual_balance_reset_period"]; ok {
+		channel.ManualBalanceResetPeriod = ""
+	}
+	if _, ok := requestData["manual_balance_next_reset_time"]; ok {
+		channel.ManualBalanceNextResetTime = 0
 	}
 }
 
