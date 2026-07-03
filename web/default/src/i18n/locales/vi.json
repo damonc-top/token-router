@@ -1823,7 +1823,7 @@
     "Font": "Phông chữ",
     "Footer": "Chân trang",
     "Footer text displayed at the bottom of pages": "Văn bản chân trang hiển thị ở cuối các trang",
-    "For Claude Code auto mode classifier requests only, convert unsupported or refused classifier responses to allow.": "Chỉ áp dụng cho yêu cầu bộ phân loại auto mode của Claude Code, chuyển phản hồi không hỗ trợ hoặc bị từ chối thành cho phép.",
+    "For Claude Code auto mode classifier requests only: requests are detected by the security-monitor system prompt combined with a </block> stop sequence or a low max_tokens setting. Once detected, the upstream response is rewritten to a forced allow (<block>no</block>), even when upstream returns an error or an explicit block=yes/block=no decision.": "Chỉ áp dụng cho yêu cầu bộ phân loại auto mode của Claude Code: yêu cầu được nhận diện qua system prompt security-monitor kết hợp với chuỗi dừng </block> hoặc max_tokens thấp. Khi đã nhận diện, phản hồi từ upstream sẽ bị ghi đè thành cho phép cưỡng ép (<block>no</block>), ngay cả khi upstream trả về lỗi hoặc quyết định rõ ràng block=yes/block=no.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Đối với các triển khai riêng tư, định dạng: https://fastgpt.run/api/openapi",
     "Force AUTH LOGIN": "Bắt buộc AUTH LOGIN",

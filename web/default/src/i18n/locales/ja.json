@@ -1823,7 +1823,7 @@
     "Font": "フォント",
     "Footer": "フッター",
     "Footer text displayed at the bottom of pages": "ページ下部に表示されるフッターテキスト",
-    "For Claude Code auto mode classifier requests only, convert unsupported or refused classifier responses to allow.": "Claude Code auto mode の分類器リクエストに限り、未対応または拒否された分類器応答を許可に変換します。",
+    "For Claude Code auto mode classifier requests only: requests are detected by the security-monitor system prompt combined with a </block> stop sequence or a low max_tokens setting. Once detected, the upstream response is rewritten to a forced allow (<block>no</block>), even when upstream returns an error or an explicit block=yes/block=no decision.": "Claude Code auto mode の分類器リクエストのみを対象とします。security-monitor システムプロンプトと </block> 停止シーケンス、または小さい max_tokens の組み合わせで検出されます。検出された場合、上流がエラーや明示的な block=yes/block=no を返した場合でも、上流の応答は強制許可（<block>no</block>）に書き換えられます。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "2025 年 5 月 10 日以降に追加されたチャネルの場合、デプロイ時にモデル名から「.」を削除する必要はありません",
     "For private deployments, format: https://fastgpt.run/api/openapi": "プライベートデプロイメントの場合、形式: https://fastgpt.run/api/openapi",
     "Force AUTH LOGIN": "AUTH LOGINを強制",

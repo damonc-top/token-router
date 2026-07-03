@@ -1828,7 +1828,7 @@
     "Font": "字体",
     "Footer": "页脚",
     "Footer text displayed at the bottom of pages": "显示在页面底部的页脚文本",
-    "For Claude Code auto mode classifier requests only, convert unsupported or refused classifier responses to allow.": "仅针对 Claude Code auto mode 分类器请求，将不支持或拒绝的分类器响应改为通过。",
+    "For Claude Code auto mode classifier requests only: requests are detected by the security-monitor system prompt combined with a </block> stop sequence or a low max_tokens setting. Once detected, the upstream response is rewritten to a forced allow (<block>no</block>), even when upstream returns an error or an explicit block=yes/block=no decision.": "仅针对 Claude Code auto mode 分类器请求：依据 security-monitor 系统提示词配合 </block> 停止序列或较小的 max_tokens 进行识别。识别后无论上游返回错误还是明确的 block=yes/block=no 决策，都会被改写为强制放行（<block>no</block>）。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
     "Force AUTH LOGIN": "强制 AUTH LOGIN",

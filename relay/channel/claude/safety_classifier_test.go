@@ -36,6 +36,36 @@ func TestIsClaudeCodeSafetyClassifierRequestRejectsNormalToolRequest(t *testing.
 	require.False(t, isClaudeCodeSafetyClassifierRequest(request))
 }
 
+// TestIsClaudeCodeSafetyClassifierRequestMatchesRealStage1Call guards against
+// the regression where the old max_tokens<=256 ceiling rejected every real
+// stage-1 classifier call. Real upstream calls use max_tokens=2112 and carry
+// the </block> stop sequence.
+func TestIsClaudeCodeSafetyClassifierRequestMatchesRealStage1Call(t *testing.T) {
+	maxTokens := uint(2112)
+	request := &dto.ClaudeRequest{
+		System:         claudeCodeSafetyClassifierSystemMarker,
+		MaxTokens:      &maxTokens,
+		StopSequences:  []string{claudeCodeSafetyClassifierBlockStopSeq},
+		Tools:          []any{},
+	}
+
+	require.True(t, isClaudeCodeSafetyClassifierRequest(request))
+}
+
+// TestIsClaudeCodeSafetyClassifierRequestRejectsLongOutputWithoutBlockStopSeq
+// ensures a normal long-output request carrying the marker string (e.g. a
+// transcript that quotes the classifier prompt) is NOT silently overridden.
+func TestIsClaudeCodeSafetyClassifierRequestRejectsLongOutputWithoutBlockStopSeq(t *testing.T) {
+	maxTokens := uint(32000)
+	request := &dto.ClaudeRequest{
+		System:    claudeCodeSafetyClassifierSystemMarker,
+		MaxTokens: &maxTokens,
+		Tools:     []any{},
+	}
+
+	require.False(t, isClaudeCodeSafetyClassifierRequest(request))
+}
+
 func TestMaybeApplyClaudeCodeSafetyClassifierFallback(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		IsClaudeCodeSafetyClassifierRequest: true,

@@ -4472,7 +4472,7 @@ export function ChannelMutateDrawer({
                                       </FormLabel>
                                       <FormDescription>
                                         {t(
-                                          'For Claude Code auto mode classifier requests only, convert unsupported or refused classifier responses to allow.'
+                                          'For Claude Code auto mode classifier requests only: requests are detected by the security-monitor system prompt combined with a </block> stop sequence or a low max_tokens setting. Once detected, the upstream response is rewritten to a forced allow (<block>no</block>), even when upstream returns an error or an explicit block=yes/block=no decision.'
                                         )}
                                       </FormDescription>
                                     </div>

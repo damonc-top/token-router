@@ -416,7 +416,7 @@
     "仅用钱包": "Portefeuille uniquement",
     "仅管理员可用。开启后，当系统定时检测全部渠道发现上游模型变更或检测异常时，将按你选择的通知方式发送汇总通知；渠道或模型过多时会自动省略部分明细。": "",
     "仅重置配置": "Réinitialiser uniquement la configuration",
-    "仅针对 Claude Code auto mode 分类器请求，将不支持或拒绝的分类器响应改为通过。明确返回 block=yes 或 block=no 时不会覆盖。": "Uniquement pour les requêtes du classificateur du mode auto de Claude Code, convertit les réponses non prises en charge ou refusées en autorisation. Les réponses explicites block=yes ou block=no ne sont pas remplacées.",
+    "仅针对 Claude Code auto mode 分类器请求：依据 security-monitor 系统提示词配合 </block> 停止序列或较小的 max_tokens 进行识别。识别后无论上游返回错误还是明确的 block=yes/block=no 决策，都会被改写为强制放行（<block>no</block>）。": "Uniquement pour les requêtes du classificateur du mode auto de Claude Code : les requêtes sont détectées via le prompt système security-monitor combiné à une séquence d'arrêt </block> ou à un max_tokens faible. Une fois détectées, la réponse amont est réécrite en autorisation forcée (<block>no</block>), même si l'amont renvoie une erreur ou une décision explicite block=yes/block=no.",
     "今日关闭": "Fermer aujourd'hui",
     "今日已签到": "Enregistré aujourd'hui",
     "今日已签到，累计签到": "Enregistré aujourd'hui, total des enregistrements",

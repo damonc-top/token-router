@@ -1823,7 +1823,7 @@
     "Font": "Police",
     "Footer": "Pied de page",
     "Footer text displayed at the bottom of pages": "Texte de pied de page affiché en bas des pages",
-    "For Claude Code auto mode classifier requests only, convert unsupported or refused classifier responses to allow.": "Uniquement pour les requêtes du classificateur du mode auto de Claude Code, convertit les réponses non prises en charge ou refusées en autorisation.",
+    "For Claude Code auto mode classifier requests only: requests are detected by the security-monitor system prompt combined with a </block> stop sequence or a low max_tokens setting. Once detected, the upstream response is rewritten to a forced allow (<block>no</block>), even when upstream returns an error or an explicit block=yes/block=no decision.": "Uniquement pour les requêtes du classificateur du mode auto de Claude Code : les requêtes sont détectées via le prompt système security-monitor combiné à une séquence d'arrêt </block> ou à un max_tokens faible. Une fois détectées, la réponse amont est réécrite en autorisation forcée (<block>no</block>), même si l'amont renvoie une erreur ou une décision explicite block=yes/block=no.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Pour les canaux ajoutés après le 10 mai 2025, pas besoin de supprimer \".\" des noms de modèles lors du déploiement",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Pour les déploiements privés, format : https://fastgpt.run/api/openapi",
     "Force AUTH LOGIN": "Forcer AUTH LOGIN",

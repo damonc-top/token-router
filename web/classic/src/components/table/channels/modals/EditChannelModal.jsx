@@ -2563,7 +2563,7 @@ const EditChannelModal = (props) => {
                           )
                         }
                         extraText={t(
-                          '仅针对 Claude Code auto mode 分类器请求，将不支持或拒绝的分类器响应改为通过。明确返回 block=yes 或 block=no 时不会覆盖。',
+                          '仅针对 Claude Code auto mode 分类器请求：依据 security-monitor 系统提示词配合 </block> 停止序列或较小的 max_tokens 进行识别。识别后无论上游返回错误还是明确的 block=yes/block=no 决策，都会被改写为强制放行（<block>no</block>）。',
                         )}
                       />
                     </>
