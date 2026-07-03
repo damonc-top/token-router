@@ -5,6 +5,10 @@
     "default",
     "classic"
   ],
+  "overrides": {
+    "date-fns": "^2.30.0",
+    "date-fns-tz": "2.0.1"
+  },
   "catalog": {
     "@lobehub/icons": "^5.10.0",
     "@rsbuild/core": "^2.1.1",

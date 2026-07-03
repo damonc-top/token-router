@@ -10,6 +10,16 @@ const semiUiDir = path.resolve(
   path.dirname(require.resolve('@douyinfe/semi-ui')),
   '../..',
 )
+// Resolve the @visactor/vchart 1.x runtime copy that ships as siblings of
+// @visactor/react-vchart. Bun hoists nested deps into per-package dirs under
+// `.bun/`, so the legacy `react-vchart/node_modules/@visactor` path no longer
+// exists. We locate react-vchart via require.resolve and reuse its sibling
+// symlinks, which always pin the vrender-core/vrender-kits/vutils versions
+// that this vchart major expects.
+const reactVChartVisactorDir = path.dirname(
+  path.dirname(require.resolve('@visactor/react-vchart/package.json')),
+)
+const visactorDir = reactVChartVisactorDir
 
 export default defineConfig(({ envMode }) => {
   const env = loadEnv({ mode: envMode, prefixes: ['VITE_'] })
@@ -43,6 +53,16 @@ export default defineConfig(({ envMode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        '@visactor/vchart': path.resolve(visactorDir, 'vchart'),
+        '@visactor/vrender-core': path.resolve(
+          reactVChartVisactorDir,
+          'vrender-core',
+        ),
+        '@visactor/vrender-kits': path.resolve(
+          reactVChartVisactorDir,
+          'vrender-kits',
+        ),
+        '@visactor/vutils': path.resolve(reactVChartVisactorDir, 'vutils'),
         '@douyinfe/semi-ui/dist/css/semi.css': path.resolve(
           semiUiDir,
           'dist/css/semi.css',
