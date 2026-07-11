@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -152,14 +153,17 @@ func GetResponseBody(method, url string, channel *model.Channel, headers http.He
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
+		// 读取上游响应体，便于定位供应商返回错误的真实原因（如密钥无效、无权限等）
+		errBody, _ := io.ReadAll(io.LimitReader(res.Body, 512))
+		errBody = bytes.TrimSpace(errBody)
+		if len(errBody) > 0 {
+			return nil, fmt.Errorf("status code: %d, body: %s", res.StatusCode, string(errBody))
+		}
 		return nil, fmt.Errorf("status code: %d", res.StatusCode)
 	}
 	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	err = res.Body.Close()
 	if err != nil {
 		return nil, err
 	}

@@ -1081,6 +1081,7 @@ const EditChannelModal = (props) => {
       if (res && res.data && res.data.success) {
         models.push(...res.data.data);
       } else {
+        showError(res?.data?.message || t('获取模型列表失败'));
         err = true;
       }
     } else {
@@ -1103,6 +1104,7 @@ const EditChannelModal = (props) => {
           if (res && res.data && res.data.success) {
             models.push(...res.data.data);
           } else {
+            showError(res?.data?.message || t('获取模型列表失败'));
             err = true;
           }
         } catch (error) {

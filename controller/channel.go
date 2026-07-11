@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -213,6 +215,12 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 		}
 		if strings.Contains(str, "{api_key}") {
 			str = strings.ReplaceAll(str, "{api_key}", key)
+		}
+		// 显式空值表示该渠道对该端点不携带鉴权头
+		// （部分供应商的 /v1/models 端点不接受 API key 鉴权，带 Bearer 反而被拒）
+		if strings.EqualFold(k, "Authorization") && str == "" {
+			headers.Del("Authorization")
+			continue
 		}
 		headers.Set(k, str)
 	}
@@ -1302,15 +1310,24 @@ func FetchModels(c *gin.Context) {
 		})
 		return
 	}
+	defer response.Body.Close()
 	//check status code
 	if response.StatusCode != http.StatusOK {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to fetch models",
-		})
+		errBody, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		errBody = bytes.TrimSpace(errBody)
+		if len(errBody) > 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("获取模型列表失败: status code: %d, body: %s", response.StatusCode, string(errBody)),
+			})
+		} else {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": fmt.Sprintf("获取模型列表失败: status code: %d", response.StatusCode),
+			})
+		}
 		return
 	}
-	defer response.Body.Close()
 
 	var result struct {
 		Data []struct {
