@@ -81,16 +81,10 @@ const perfSchema = z.object({
     monitor_memory_threshold: z.coerce.number().min(0).max(100),
     monitor_disk_threshold: z.coerce.number().min(0).max(100),
   }),
-  perf_metrics_setting: z.object({
-    enabled: z.boolean(),
-    flush_interval: z.coerce.number().min(1),
-    bucket_time: z.enum(['minute', '5min', 'hour']),
-    retention_days: z.coerce.number().min(0),
-  }),
   message_log_setting: z.object({
     enabled: z.boolean(),
     retention_days: z.coerce.number().min(1).max(30),
-    max_size_mb: z.coerce.number().min(1),
+    max_size_mb: z.coerce.number().min(1).max(102400),
   }),
 })
 
@@ -106,10 +100,6 @@ type FlatPerfDefaults = {
   'performance_setting.monitor_cpu_threshold': number
   'performance_setting.monitor_memory_threshold': number
   'performance_setting.monitor_disk_threshold': number
-  'perf_metrics_setting.enabled': boolean
-  'perf_metrics_setting.flush_interval': number
-  'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
-  'perf_metrics_setting.retention_days': number
   'message_log_setting.enabled': boolean
   'message_log_setting.retention_days': number
   'message_log_setting.max_size_mb': number
@@ -130,12 +120,6 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
       defaults['performance_setting.monitor_memory_threshold'],
     monitor_disk_threshold:
       defaults['performance_setting.monitor_disk_threshold'],
-  },
-  perf_metrics_setting: {
-    enabled: defaults['perf_metrics_setting.enabled'],
-    flush_interval: defaults['perf_metrics_setting.flush_interval'],
-    bucket_time: defaults['perf_metrics_setting.bucket_time'],
-    retention_days: defaults['perf_metrics_setting.retention_days'],
   },
   message_log_setting: {
     enabled: defaults['message_log_setting.enabled'],
@@ -161,12 +145,6 @@ const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
     values.performance_setting.monitor_memory_threshold,
   'performance_setting.monitor_disk_threshold':
     values.performance_setting.monitor_disk_threshold,
-  'perf_metrics_setting.enabled': values.perf_metrics_setting.enabled,
-  'perf_metrics_setting.flush_interval':
-    values.perf_metrics_setting.flush_interval,
-  'perf_metrics_setting.bucket_time': values.perf_metrics_setting.bucket_time,
-  'perf_metrics_setting.retention_days':
-    values.perf_metrics_setting.retention_days,
   'message_log_setting.enabled': values.message_log_setting.enabled,
   'message_log_setting.retention_days':
     values.message_log_setting.retention_days,
@@ -227,10 +205,6 @@ export function PerformanceSection(props: Props) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [stats, setStats] = useState<PerformanceStats | null>(null)
-  const [logInfo, setLogInfo] = useState<LogInfo | null>(null)
-  const [logCleanupMode, setLogCleanupMode] = useState('by_count')
-  const [logCleanupValue, setLogCleanupValue] = useState(10)
-  const [logCleanupLoading, setLogCleanupLoading] = useState(false)
   const [messageLogStats, setMessageLogStats] = useState<{
     count: number
     size_mb: number
@@ -268,15 +242,6 @@ export function PerformanceSection(props: Props) {
     }
   }, [])
 
-  const fetchLogInfo = useCallback(async () => {
-    try {
-      const res = await api.get('/api/performance/logs')
-      if (res.data.success) setLogInfo(res.data.data)
-    } catch {
-      /* ignore */
-    }
-  }, [])
-
   const fetchMessageLogStats = useCallback(async () => {
     try {
       const res = await api.get('/api/message_log/stats')
@@ -288,9 +253,8 @@ export function PerformanceSection(props: Props) {
 
   useEffect(() => {
     fetchStats()
-    fetchLogInfo()
     fetchMessageLogStats()
-  }, [fetchStats, fetchLogInfo, fetchMessageLogStats])
+  }, [fetchStats, fetchMessageLogStats])
 
   const onSubmit = async (values: PerfFormValues) => {
     const normalized = normalizeFormValues(values)
@@ -354,7 +318,6 @@ export function PerformanceSection(props: Props) {
 
   const diskEnabled = form.watch('performance_setting.disk_cache_enabled')
   const monitorEnabled = form.watch('performance_setting.monitor_enabled')
-  const perfMetricsEnabled = form.watch('perf_metrics_setting.enabled')
   const messageLogEnabled = form.watch('message_log_setting.enabled')
   const maxCacheSizeRaw = form.watch(
     'performance_setting.disk_cache_max_size_mb'
@@ -600,8 +563,6 @@ export function PerformanceSection(props: Props) {
 
       <Separator />
 
-      <Separator />
-
       {/* Message Log Management */}
       <div className='space-y-4'>
         <div>
@@ -620,15 +581,17 @@ export function PerformanceSection(props: Props) {
                 control={form.control}
                 name='message_log_setting.enabled'
                 render={({ field }) => (
-                  <FormItem className='flex items-center gap-2'>
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Enable Message Logging')}</FormLabel>
+                    </SettingsSwitchContent>
                     <FormControl>
                       <Switch
                         checked={field.value}
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormLabel>{t('Enable Message Logging')}</FormLabel>
-                  </FormItem>
+                  </SettingsSwitchItem>
                 )}
               />
               <FormField
@@ -662,6 +625,7 @@ export function PerformanceSection(props: Props) {
                       <Input
                         type='number'
                         min={1}
+                        max={102400}
                         step={1}
                         {...safeNumberFieldProps(field)}
                         disabled={!messageLogEnabled}
@@ -721,6 +685,7 @@ export function PerformanceSection(props: Props) {
                   <AlertDialogFooter>
                     <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
                     <AlertDialogAction
+                      variant='destructive'
                       onClick={async () => {
                         try {
                           const res = await api.delete('/api/message_log/')
@@ -746,148 +711,6 @@ export function PerformanceSection(props: Props) {
       </div>
 
       <Separator />
-
-      {/* Server Log Management */}
-      <div className='space-y-4'>
-        <div>
-          <h4 className='font-medium'>{t('Server Log Management')}</h4>
-          <p className='text-muted-foreground mt-1 text-xs'>
-            {t(
-              'Manage server log files. Log files accumulate over time; regular cleanup is recommended to free disk space.'
-            )}
-          </p>
-        </div>
-
-        {logInfo === null ? null : logInfo.enabled ? (
-          <div className='space-y-4'>
-            <div className='rounded-lg border p-4'>
-              <div className='grid grid-cols-2 gap-2 text-sm md:grid-cols-4'>
-                <div>
-                  <span className='text-muted-foreground'>
-                    {t('Log Directory')}:
-                  </span>{' '}
-                  <span className='font-mono text-xs'>{logInfo.log_dir}</span>
-                </div>
-                <div>
-                  <span className='text-muted-foreground'>
-                    {t('Log File Count')}:
-                  </span>{' '}
-                  {logInfo.file_count}
-                </div>
-                <div>
-                  <span className='text-muted-foreground'>
-                    {t('Total Log Size')}:
-                  </span>{' '}
-                  {formatBytes(logInfo.total_size)}
-                </div>
-                {logInfo.oldest_time && logInfo.newest_time && (
-                  <div>
-                    <span className='text-muted-foreground'>
-                      {t('Date Range')}:
-                    </span>{' '}
-                    {dayjs(logInfo.oldest_time).format('YYYY-MM-DD')} ~{' '}
-                    {dayjs(logInfo.newest_time).format('YYYY-MM-DD')}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className='flex flex-wrap items-end gap-3'>
-              <div className='grid gap-1.5'>
-                <Label className='text-xs'>{t('Cleanup Mode')}</Label>
-                <Select
-                  items={[
-                    { value: 'by_count', label: t('Retain last N files') },
-                    { value: 'by_days', label: t('Retain last N days') },
-                  ]}
-                  value={logCleanupMode}
-                  onValueChange={(v) => v !== null && setLogCleanupMode(v)}
-                >
-                  <SelectTrigger className='w-[160px]'>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    <SelectGroup>
-                      <SelectItem value='by_count'>
-                        {t('Retain last N files')}
-                      </SelectItem>
-                      <SelectItem value='by_days'>
-                        {t('Retain last N days')}
-                      </SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className='grid gap-1.5'>
-                <Label className='text-xs'>
-                  {logCleanupMode === 'by_count'
-                    ? t('Files to Retain')
-                    : t('Days to Retain')}
-                </Label>
-                <Input
-                  type='number'
-                  min={1}
-                  max={logCleanupMode === 'by_count' ? 1000 : 3650}
-                  value={logCleanupValue}
-                  onChange={(e) => setLogCleanupValue(Number(e.target.value))}
-                  className='w-[120px]'
-                />
-              </div>
-              <AlertDialog>
-                <AlertDialogTrigger
-                  render={
-                    <Button
-                      variant='destructive'
-                      size='sm'
-                      disabled={logCleanupLoading}
-                    />
-                  }
-                >
-                  {logCleanupLoading
-                    ? t('Cleaning...')
-                    : t('Clean Up Log Files')}
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>
-                      {t('Confirm log file cleanup?')}
-                    </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      {logCleanupMode === 'by_count'
-                        ? t(
-                            'Only the last {{value}} log files will be retained; the rest will be deleted.',
-                            {
-                              value: logCleanupValue,
-                            }
-                          )
-                        : t(
-                            'Log files older than {{value}} days will be deleted.',
-                            {
-                              value: logCleanupValue,
-                            }
-                          )}
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
-                    <AlertDialogAction onClick={cleanupLogFiles}>
-                      {t('Confirm Cleanup')}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </div>
-        ) : (
-          <Alert>
-            <AlertDescription>
-              {t(
-                'Server logging is not enabled (log directory not configured)'
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-      </div>
 
       {/* Performance Stats Dashboard */}
       <div className='space-y-4'>
