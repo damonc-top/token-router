@@ -200,4 +200,11 @@ export const CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES = new Set([
   14, 35, 43,
 ]);
 
+// OpenAI Codex CLI safety classifier fallback. Mirrors the default-side set
+// (see web/default/src/features/channels/constants.ts): every OpenAI-
+// compatible channel type benefits from short-circuiting the stub.
+export const OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES = new Set([
+  1, 3, 4, 8, 17, 19, 20, 22, 25, 26, 31, 35, 40, 43, 45, 46, 47, 48, 53, 57, 58,
+]);
+
 export const MODEL_TABLE_PAGE_SIZE = 10;

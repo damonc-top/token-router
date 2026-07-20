@@ -31,6 +31,7 @@ import {
   CHANNEL_OPTIONS,
   CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
   MODEL_FETCHABLE_CHANNEL_TYPES,
+  OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
 } from '../../../../constants';
 import {
   SideSheet,
@@ -217,6 +218,7 @@ const EditChannelModal = (props) => {
     allow_speed: false,
     claude_beta_query: false,
     claude_code_safety_classifier_fallback_enabled: false,
+    openai_code_safety_classifier_fallback_enabled: false,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
     upstream_model_update_last_check_time: 0,
@@ -951,6 +953,7 @@ const EditChannelModal = (props) => {
           data.allow_speed = false;
           data.claude_beta_query = false;
           data.claude_code_safety_classifier_fallback_enabled = false;
+          data.openai_code_safety_classifier_fallback_enabled = false;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
           data.upstream_model_update_last_check_time = 0;
@@ -1053,6 +1056,7 @@ const EditChannelModal = (props) => {
         data.force_format ||
         data.claude_beta_query ||
         data.claude_code_safety_classifier_fallback_enabled ||
+        data.openai_code_safety_classifier_fallback_enabled ||
         data.system_prompt_override;
       if (hasAdvancedValues) {
         setAdvancedSettingsOpen(true);
@@ -1840,6 +1844,19 @@ const EditChannelModal = (props) => {
       delete settings.claude_code_safety_classifier_fallback_enabled;
     }
 
+    if (
+      OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+        localInputs.type,
+      )
+    ) {
+      settings.openai_code_safety_classifier_fallback_enabled =
+        localInputs.openai_code_safety_classifier_fallback_enabled === true;
+    } else if (
+      'openai_code_safety_classifier_fallback_enabled' in settings
+    ) {
+      delete settings.openai_code_safety_classifier_fallback_enabled;
+    }
+
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
     settings.upstream_model_update_auto_sync_enabled =
@@ -1886,6 +1903,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_speed;
     delete localInputs.claude_beta_query;
     delete localInputs.claude_code_safety_classifier_fallback_enabled;
+    delete localInputs.openai_code_safety_classifier_fallback_enabled;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
     delete localInputs.upstream_model_update_last_check_time;
@@ -2545,6 +2563,29 @@ const EditChannelModal = (props) => {
                       <Form.Switch field='allow_speed' label={t('允许 speed 透传')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('allow_speed', value)} extraText={t('speed 字段用于控制 Claude 推理速度模式。默认关闭以避免意外切换到 fast 模式')} />
                     </>
                   )}
+                </div>
+
+                {/* Extra Settings Section */}
+                <div className='pt-3'>
+                  <Text className='text-sm font-medium text-gray-500 mb-3 block'>
+                    {t('额外设置')}
+                  </Text>
+
+                  {inputs.type === 14 && (
+                    <Form.Switch field='claude_beta_query' label={t('Claude 强制 beta=true')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('claude_beta_query', value)} extraText={t('开启后，该渠道请求 Claude 时将强制追加 ?beta=true（无需客户端手动传参）')} />
+                  )}
+
+                  {inputs.type === 1 && (
+                    <Form.Switch field='force_format' label={t('强制格式化')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('force_format', value)} extraText={t('强制将响应格式化为 OpenAI 标准格式（只适用于OpenAI渠道类型）')} />
+                  )}
+
+                  <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
+                  <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
+
+                  <Form.Input field='proxy' label={t('代理地址')} placeholder={t('例如: socks5://user:pass@host:port')} onChange={(value) => handleChannelSettingsChange('proxy', value)} showClear extraText={t('用于配置网络代理，支持 socks5 协议')} />
+
+                  <Form.TextArea field='system_prompt' label={t('系统提示词')} placeholder={t('输入系统提示词，用户的系统提示词将优先于此设置')} onChange={(value) => handleChannelSettingsChange('system_prompt', value)} autosize showClear extraText={t('用户优先：如果用户在请求中指定了系统提示词，将优先使用用户的设置')} />
+                  <Form.Switch field='system_prompt_override' label={t('系统提示词拼接')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('system_prompt_override', value)} extraText={t('如果用户请求中包含系统提示词，则使用此设置拼接到用户的系统提示词前面')} />
 
                   {CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
                     inputs.type,
@@ -2570,29 +2611,90 @@ const EditChannelModal = (props) => {
                       />
                     </>
                   )}
-                </div>
 
-                {/* Extra Settings Section */}
-                <div className='pt-3'>
-                  <Text className='text-sm font-medium text-gray-500 mb-3 block'>
-                    {t('额外设置')}
-                  </Text>
-
-                  {inputs.type === 14 && (
-                    <Form.Switch field='claude_beta_query' label={t('Claude 强制 beta=true')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('claude_beta_query', value)} extraText={t('开启后，该渠道请求 Claude 时将强制追加 ?beta=true（无需客户端手动传参）')} />
+                  {OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+                    inputs.type,
+                  ) && (
+                    <>
+                      <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
+                        {t('OpenAI Codex 兼容性')}
+                      </div>
+                      <Form.Switch
+                        field='openai_code_safety_classifier_fallback_enabled'
+                        label={t('OpenAI Codex 安全分类器兜底放行')}
+                        checkedText={t('开')}
+                        uncheckedText={t('关')}
+                        onChange={(value) =>
+                          handleChannelOtherSettingsChange(
+                            'openai_code_safety_classifier_fallback_enabled',
+                            value,
+                          )
+                        }
+                        extraText={t(
+                          '仅针对 Codex CLI auto mode 分类器请求：检测 max_output_tokens / max_completion_tokens 较小，且 system / instructions / 第一条 input 消息中含分类器关键字（safety monitor、risk classifier、classify the action、<policy_decision>），tools 为空，tool_choice=none。命中后在本地 stub 一个 “Allowed by...” 响应，完全不调用上游。',
+                        )}
+                      />
+                    </>
                   )}
 
-                  {inputs.type === 1 && (
-                    <Form.Switch field='force_format' label={t('强制格式化')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('force_format', value)} extraText={t('强制将响应格式化为 OpenAI 标准格式（只适用于OpenAI渠道类型）')} />
-                  )}
-
-                  <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
-                  <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
-
-                  <Form.Input field='proxy' label={t('代理地址')} placeholder={t('例如: socks5://user:pass@host:port')} onChange={(value) => handleChannelSettingsChange('proxy', value)} showClear extraText={t('用于配置网络代理，支持 socks5 协议')} />
-
-                  <Form.TextArea field='system_prompt' label={t('系统提示词')} placeholder={t('输入系统提示词，用户的系统提示词将优先于此设置')} onChange={(value) => handleChannelSettingsChange('system_prompt', value)} autosize showClear extraText={t('用户优先：如果用户在请求中指定了系统提示词，将优先使用用户的设置')} />
-                  <Form.Switch field='system_prompt_override' label={t('系统提示词拼接')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('system_prompt_override', value)} extraText={t('如果用户请求中包含系统提示词，则使用此设置拼接到用户的系统提示词前面')} />
+                  <div className='py-3 border-t border-b border-gray-100'>
+                    <Text className='text-sm font-medium text-gray-500 mb-3 block'>
+                      {t('手动余额')}
+                    </Text>
+                    <Form.Switch
+                      field='manual_balance_enabled'
+                      label={t('启用手动余额')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      initValue={inputs.manual_balance_enabled}
+                      onChange={(value) =>
+                        handleInputChange('manual_balance_enabled', value)
+                      }
+                    />
+                    {inputs.manual_balance_enabled && (
+                      <Row gutter={12}>
+                        <Col span={12}>
+                          <Form.InputNumber
+                            field='manual_balance_amount'
+                            label={t('手动余额金额')}
+                            placeholder='200'
+                            min={0}
+                            precision={2}
+                            style={{ width: '100%' }}
+                            onNumberChange={(value) =>
+                              handleInputChange(
+                                'manual_balance_amount',
+                                Number(value || 0),
+                              )
+                            }
+                          />
+                        </Col>
+                        <Col span={12}>
+                          <Form.Select
+                            field='manual_balance_reset_period'
+                            label={t('重置周期')}
+                            placeholder={t('请选择重置周期')}
+                            optionList={[
+                              { label: t('每天'), value: 'daily' },
+                              { label: t('每周'), value: 'weekly' },
+                              { label: t('每月'), value: 'monthly' },
+                              { label: t('每季度'), value: 'quarterly' },
+                            ]}
+                            style={{ width: '100%' }}
+                            value={
+                              inputs.manual_balance_reset_period || 'monthly'
+                            }
+                            onChange={(value) =>
+                              handleInputChange(
+                                'manual_balance_reset_period',
+                                value,
+                              )
+                            }
+                          />
+                        </Col>
+                      </Row>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -2728,65 +2830,6 @@ const EditChannelModal = (props) => {
                       onChange={(value) => handleInputChange('name', value)}
                       autoComplete='new-password'
                     />
-
-                    <div className='py-3 border-t border-b border-gray-100'>
-                      <Text className='text-sm font-medium text-gray-500 mb-3 block'>
-                        {t('手动余额')}
-                      </Text>
-                      <Form.Switch
-                        field='manual_balance_enabled'
-                        label={t('启用手动余额')}
-                        checkedText={t('开')}
-                        uncheckedText={t('关')}
-                        initValue={inputs.manual_balance_enabled}
-                        onChange={(value) =>
-                          handleInputChange('manual_balance_enabled', value)
-                        }
-                      />
-                      {inputs.manual_balance_enabled && (
-                        <Row gutter={12}>
-                          <Col span={12}>
-                            <Form.InputNumber
-                              field='manual_balance_amount'
-                              label={t('手动余额金额')}
-                              placeholder='200'
-                              min={0}
-                              precision={2}
-                              style={{ width: '100%' }}
-                              onNumberChange={(value) =>
-                                handleInputChange(
-                                  'manual_balance_amount',
-                                  Number(value || 0),
-                                )
-                              }
-                            />
-                          </Col>
-                          <Col span={12}>
-                            <Form.Select
-                              field='manual_balance_reset_period'
-                              label={t('重置周期')}
-                              placeholder={t('请选择重置周期')}
-                              optionList={[
-                                { label: t('每天'), value: 'daily' },
-                                { label: t('每周'), value: 'weekly' },
-                                { label: t('每月'), value: 'monthly' },
-                                { label: t('每季度'), value: 'quarterly' },
-                              ]}
-                              style={{ width: '100%' }}
-                              value={
-                                inputs.manual_balance_reset_period || 'monthly'
-                              }
-                              onChange={(value) =>
-                                handleInputChange(
-                                  'manual_balance_reset_period',
-                                  value,
-                                )
-                              }
-                            />
-                          </Col>
-                        </Row>
-                      )}
-                    </div>
 
                     {inputs.type === 33 && (
                       <>

@@ -107,6 +107,14 @@ export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
 export const CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES =
   new Set<number>([14, 35, 43])
 
+// OpenAI Codex CLI safety classifier fallback. The stub short-circuits
+// upstream so any OpenAI-compatible channel benefits — including Azure,
+// OpenRouter, and Custom. Mirrors streamSupportedChannels minus realtime-only
+// channels and Anthropic.
+export const OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES = new Set<number>(
+  [1, 3, 4, 8, 17, 19, 20, 22, 25, 26, 31, 35, 40, 43, 45, 46, 47, 48, 53, 57, 58]
+)
+
 // ============================================================================
 // Channel Status (label values are i18n keys; use t(config.label) in components)
 // ============================================================================

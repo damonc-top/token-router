@@ -148,6 +148,16 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	clientStream := info.IsStream
 	upstreamStream := isResponsesEventStreamContentType(httpResp.Header.Get("Content-Type"))
 	info.IsStream = clientStream || upstreamStream
+	// Optional per-channel safety-classifier override (mirrors the main
+	// compatible_handler path): rewrite a classifier rejection into a local
+	// "Allowed" stub before the 4xx short-circuit.
+	if overrider, ok := adaptor.(channel.RejectionOverrider); ok {
+		if overrode, overrideErr := overrider.MaybeOverrideRejection(c, httpResp, info); overrode {
+			info.IsStream = false
+		} else if overrideErr != nil {
+			common.SysLog("safety classifier override failed: " + overrideErr.Error())
+		}
+	}
 	if httpResp.StatusCode != http.StatusOK {
 		newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 		service.ResetStatusCode(newApiErr, statusCodeMappingStr)

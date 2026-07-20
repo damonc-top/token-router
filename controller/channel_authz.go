@@ -113,15 +113,6 @@ func clearChannelReadOnlyFields(channel *PatchChannel, requestData map[string]an
 	if _, ok := requestData["used_quota"]; ok {
 		channel.UsedQuota = 0
 	}
-	if _, ok := requestData["manual_balance_enabled"]; ok {
-		channel.ManualBalanceEnabled = false
-	}
-	if _, ok := requestData["manual_balance_amount"]; ok {
-		channel.ManualBalanceAmount = 0
-	}
-	if _, ok := requestData["manual_balance_reset_period"]; ok {
-		channel.ManualBalanceResetPeriod = ""
-	}
 	if _, ok := requestData["manual_balance_next_reset_time"]; ok {
 		channel.ManualBalanceNextResetTime = 0
 	}

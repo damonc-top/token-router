@@ -22,6 +22,7 @@ export {
   CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
   MODEL_FETCHABLE_CHANNEL_TYPES,
   MODEL_TABLE_PAGE_SIZE,
+  OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
 } from './channel.constants';
 export { userConstants } from './user.constants';
 export { toastConstants } from './toast.constants';

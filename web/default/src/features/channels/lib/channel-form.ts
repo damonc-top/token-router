@@ -23,6 +23,7 @@ import {
   CHANNEL_STATUS,
   ERROR_MESSAGES,
   MODEL_FETCHABLE_TYPES,
+  OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
 } from '../constants'
 import type { Channel } from '../types'
 import {
@@ -214,6 +215,7 @@ export const channelFormSchema = z
     allow_speed: z.boolean().optional(), // Anthropic: speed mode control
     claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
     claude_code_safety_classifier_fallback_enabled: z.boolean().optional(), // Anthropic/MiniMax/DeepSeek: Claude Code safety classifier fallback
+    openai_code_safety_classifier_fallback_enabled: z.boolean().optional(), // OpenAI-compatible: Codex CLI safety classifier fallback
     disable_task_polling_sleep: z.boolean().optional(),
     // Upstream model update settings (stored in settings JSON)
     upstream_model_update_check_enabled: z.boolean().optional(),
@@ -358,6 +360,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   allow_speed: false,
   claude_beta_query: false,
   claude_code_safety_classifier_fallback_enabled: false,
+  openai_code_safety_classifier_fallback_enabled: false,
   disable_task_polling_sleep: false,
   upstream_model_update_check_enabled: false,
   upstream_model_update_auto_sync_enabled: false,
@@ -415,6 +418,7 @@ export function transformChannelToFormDefaults(
   let allowSpeed = false
   let claudeBetaQuery = false
   let claudeCodeSafetyClassifierFallbackEnabled = false
+  let openaiCodeSafetyClassifierFallbackEnabled = false
   let disableTaskPollingSleep = false
   let upstreamModelUpdateCheckEnabled = false
   let upstreamModelUpdateAutoSyncEnabled = false
@@ -437,6 +441,8 @@ export function transformChannelToFormDefaults(
       claudeBetaQuery = parsed.claude_beta_query === true
 claudeCodeSafetyClassifierFallbackEnabled =
         parsed.claude_code_safety_classifier_fallback_enabled === true
+      openaiCodeSafetyClassifierFallbackEnabled =
+        parsed.openai_code_safety_classifier_fallback_enabled === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
       upstreamModelUpdateCheckEnabled =
         parsed.upstream_model_update_check_enabled === true
@@ -501,6 +507,8 @@ claudeCodeSafetyClassifierFallbackEnabled =
     claude_beta_query: claudeBetaQuery,
     claude_code_safety_classifier_fallback_enabled:
       claudeCodeSafetyClassifierFallbackEnabled,
+    openai_code_safety_classifier_fallback_enabled:
+      openaiCodeSafetyClassifierFallbackEnabled,
     disable_task_polling_sleep: disableTaskPollingSleep,
     allow_safety_identifier: allowSafetyIdentifier,
     upstream_model_update_check_enabled: upstreamModelUpdateCheckEnabled,
@@ -614,6 +622,17 @@ if (
     'claude_code_safety_classifier_fallback_enabled' in settingsObj
   ) {
     delete settingsObj.claude_code_safety_classifier_fallback_enabled
+  }
+
+  if (
+    OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(formData.type)
+  ) {
+    settingsObj.openai_code_safety_classifier_fallback_enabled =
+      formData.openai_code_safety_classifier_fallback_enabled === true
+  } else if (
+    'openai_code_safety_classifier_fallback_enabled' in settingsObj
+  ) {
+    delete settingsObj.openai_code_safety_classifier_fallback_enabled
   }
 
   settingsObj.disable_task_polling_sleep =

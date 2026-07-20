@@ -139,6 +139,7 @@ import {
   FIELD_DESCRIPTIONS,
   FIELD_PLACEHOLDERS,
   MODEL_FETCHABLE_TYPES,
+  OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES,
 } from '../../constants'
 import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
 import {
@@ -4106,6 +4107,173 @@ export function ChannelMutateDrawer({
                                 </FormItem>
                               )}
                             />
+
+                            <Separator />
+
+                            {/* ── Manual Balance ── */}
+                            <FormField
+                              control={form.control}
+                              name='manual_balance_enabled'
+                              render={({ field }) => (
+                                <FormItem className={sideDrawerSwitchItemClassName()}>
+                                  <div className='flex flex-col gap-0.5'>
+                                    <FormLabel>{t('Manual Balance')}</FormLabel>
+                                  </div>
+                                  <FormControl>
+                                    <Switch
+                                      checked={field.value === true}
+                                      onCheckedChange={field.onChange}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+
+                            {manualBalanceEnabled && (
+                              <div className='grid gap-4 sm:grid-cols-2'>
+                                <FormField
+                                  control={form.control}
+                                  name='manual_balance_amount'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>
+                                        {t('Manual balance amount')}
+                                      </FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          type='number'
+                                          min={0}
+                                          step='0.01'
+                                          placeholder='200'
+                                          value={field.value ?? 0}
+                                          onChange={(event) =>
+                                            field.onChange(
+                                              Number(event.target.value || 0)
+                                            )
+                                          }
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+
+                                <FormField
+                                  control={form.control}
+                                  name='manual_balance_reset_period'
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>{t('Reset period')}</FormLabel>
+                                      <Select
+                                        items={[
+                                          { value: 'daily', label: t('Daily') },
+                                          { value: 'weekly', label: t('Weekly') },
+                                          { value: 'monthly', label: t('Monthly') },
+                                          { value: 'quarterly', label: t('Quarterly') },
+                                        ]}
+                                        value={field.value || 'monthly'}
+                                        onValueChange={field.onChange}
+                                      >
+                                        <FormControl>
+                                          <SelectTrigger>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent alignItemWithTrigger={false}>
+                                          <SelectGroup>
+                                            <SelectItem value='daily'>
+                                              {t('Daily')}
+                                            </SelectItem>
+                                            <SelectItem value='weekly'>
+                                              {t('Weekly')}
+                                            </SelectItem>
+                                            <SelectItem value='monthly'>
+                                              {t('Monthly')}
+                                            </SelectItem>
+                                            <SelectItem value='quarterly'>
+                                              {t('Quarterly')}
+                                            </SelectItem>
+                                          </SelectGroup>
+                                        </SelectContent>
+                                      </Select>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                              </div>
+                            )}
+
+                            <Separator />
+
+                            {(CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+                              currentType
+                            ) ||
+                              OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+                                currentType
+                              )) && (
+                              <div className='flex flex-col gap-3'>
+                                <SubHeading
+                                  title={t('Override Safety Classifier')}
+                                  icon={<Wand2 className='h-3.5 w-3.5' />}
+                                />
+
+                                <div className='divide-border space-y-0 divide-y border-y'>
+                                  {CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+                                    currentType
+                                  ) && (
+                                    <FormField
+                                      control={form.control}
+                                      name='claude_code_safety_classifier_fallback_enabled'
+                                      render={({ field }) => (
+                                        <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                          <div className='space-y-0.5'>
+                                            <FormLabel className='text-sm'>
+                                              {t('覆盖安全分类')}
+                                            </FormLabel>
+                                            <FormDescription>
+                                              {t('开启后可绕过安全分类器的拦截')}
+                                            </FormDescription>
+                                          </div>
+                                          <FormControl>
+                                            <Switch
+                                              checked={field.value}
+                                              onCheckedChange={field.onChange}
+                                            />
+                                          </FormControl>
+                                        </FormItem>
+                                      )}
+                                    />
+                                  )}
+
+                                  {OPENAI_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
+                                    currentType
+                                  ) && (
+                                    <FormField
+                                      control={form.control}
+                                      name='openai_code_safety_classifier_fallback_enabled'
+                                      render={({ field }) => (
+                                        <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                          <div className='space-y-0.5'>
+                                            <FormLabel className='text-sm'>
+                                              {t('覆盖安全分类')}
+                                            </FormLabel>
+                                            <FormDescription>
+                                              {t('开启后可绕过安全分类器的拦截')}
+                                            </FormDescription>
+                                          </div>
+                                          <FormControl>
+                                            <Switch
+                                              checked={field.value}
+                                              onCheckedChange={field.onChange}
+                                            />
+                                          </FormControl>
+                                        </FormItem>
+                                      )}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </fieldset>
                         </div>
 
@@ -4347,145 +4515,6 @@ export function ChannelMutateDrawer({
                                 )}
                               </div>
                             </fieldset>
-                          </div>
-                        )}
-
-                        {/* ── Manual Balance ── */}
-                        <div className={sideDrawerSectionClassName()}>
-                          <CardHeading
-                            title={t('Manual Balance')}
-                            icon={<RefreshCw className='h-4 w-4' />}
-                          />
-                          <FormField
-                            control={form.control}
-                            name='manual_balance_enabled'
-                            render={({ field }) => (
-                              <FormItem className={sideDrawerSwitchItemClassName()}>
-                                <div className='flex flex-col gap-0.5'>
-                                  <FormLabel>{t('Manual balance')}</FormLabel>
-                                </div>
-                                <FormControl>
-                                  <Switch
-                                    checked={field.value === true}
-                                    onCheckedChange={field.onChange}
-                                  />
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-
-                          {manualBalanceEnabled && (
-                            <div className='grid gap-4 sm:grid-cols-2'>
-                              <FormField
-                                control={form.control}
-                                name='manual_balance_amount'
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>
-                                      {t('Manual balance amount')}
-                                    </FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        type='number'
-                                        min={0}
-                                        step='0.01'
-                                        placeholder='200'
-                                        value={field.value ?? 0}
-                                        onChange={(event) =>
-                                          field.onChange(
-                                            Number(event.target.value || 0)
-                                          )
-                                        }
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name='manual_balance_reset_period'
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>{t('Reset period')}</FormLabel>
-                                    <Select
-                                      items={[
-                                        { value: 'daily', label: t('Daily') },
-                                        { value: 'weekly', label: t('Weekly') },
-                                        { value: 'monthly', label: t('Monthly') },
-                                        { value: 'quarterly', label: t('Quarterly') },
-                                      ]}
-                                      value={field.value || 'monthly'}
-                                      onValueChange={field.onChange}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent alignItemWithTrigger={false}>
-                                        <SelectGroup>
-                                          <SelectItem value='daily'>
-                                            {t('Daily')}
-                                          </SelectItem>
-                                          <SelectItem value='weekly'>
-                                            {t('Weekly')}
-                                          </SelectItem>
-                                          <SelectItem value='monthly'>
-                                            {t('Monthly')}
-                                          </SelectItem>
-                                          <SelectItem value='quarterly'>
-                                            {t('Quarterly')}
-                                          </SelectItem>
-                                        </SelectGroup>
-                                      </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {CLAUDE_CODE_SAFETY_CLASSIFIER_FALLBACK_CHANNEL_TYPES.has(
-                          currentType
-                        ) && (
-                          <div className='border-border/60 flex flex-col gap-3 border-b pb-4'>
-                            <SubHeading
-                              title={t('Claude Code compatibility')}
-                              icon={<Wand2 className='h-3.5 w-3.5' />}
-                            />
-
-                            <div className='divide-border space-y-0 divide-y border-y'>
-                              <FormField
-                                control={form.control}
-                                name='claude_code_safety_classifier_fallback_enabled'
-                                render={({ field }) => (
-                                  <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
-                                    <div className='space-y-0.5'>
-                                      <FormLabel className='text-sm'>
-                                        {t(
-                                          'Allow Claude Code safety classifier fallback'
-                                        )}
-                                      </FormLabel>
-                                      <FormDescription>
-                                        {t(
-                                          'For Claude Code auto mode classifier requests only: requests are detected by the security-monitor system prompt combined with a </block> stop sequence or a low max_tokens setting. Once detected, the upstream response is rewritten to a forced allow (<block>no</block>), even when upstream returns an error or an explicit block=yes/block=no decision.'
-                                        )}
-                                      </FormDescription>
-                                    </div>
-                                    <FormControl>
-                                      <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
                           </div>
                         )}
 

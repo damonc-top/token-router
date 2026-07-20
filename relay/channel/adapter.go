@@ -81,3 +81,11 @@ type TaskAdaptor interface {
 type OpenAIVideoConverter interface {
 	ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
 }
+
+// RejectionOverrider is an optional interface an Adaptor may implement to
+// rewrite an upstream safety-classifier rejection into a locally-built
+// "Allowed" response before the 4xx short-circuit / per-mode handler runs.
+// The override is gated by the channel's per-channel switch.
+type RejectionOverrider interface {
+	MaybeOverrideRejection(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (overrode bool, err error)
+}

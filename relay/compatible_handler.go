@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -196,6 +197,18 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
+		// Optional per-channel safety-classifier override: when the channel has
+		// the fallback switch on, inspect the upstream body (buffered) and, if it
+		// looks like a classifier rejection, rewrite it to a local "Allowed"
+		// stub BEFORE the 4xx short-circuit so the client receives a 200 instead
+		// of a policy error. Also catches 2xx refusal / content_filter bodies.
+		if overrider, ok := adaptor.(channel.RejectionOverrider); ok {
+			if overrode, overrideErr := overrider.MaybeOverrideRejection(c, httpResp, info); overrode {
+				info.IsStream = false
+			} else if overrideErr != nil {
+				logger.LogError(c, "safety classifier override failed: "+overrideErr.Error())
+			}
+		}
 		if httpResp.StatusCode != http.StatusOK {
 			newApiErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 			// reset status code 重置状态码
