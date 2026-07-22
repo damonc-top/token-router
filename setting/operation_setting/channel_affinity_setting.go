@@ -114,6 +114,29 @@ var channelAffinitySetting = ChannelAffinitySetting{
 			IncludeRuleName:       true,
 			UserAgentInclude:      nil,
 		},
+		{
+			// Grok CLI (chat/completions + responses) does not send prompt_cache_key /
+			// metadata by default. Prefer an explicit session header if the client
+			// injects one; fall back to token_id so the same API key sticks to one channel.
+			Name:       "grok cli trace",
+			ModelRegex: []string{"^grok"},
+			PathRegex:  []string{"/v1/chat/completions", "/v1/responses"},
+			KeySources: []ChannelAffinityKeySource{
+				{Type: "request_header", Key: "X-Session-Id"},
+				{Type: "request_header", Key: "Session-Id"},
+				{Type: "gjson", Path: "prompt_cache_key"},
+				{Type: "gjson", Path: "user"},
+				{Type: "gjson", Path: "metadata.session_id"},
+				{Type: "gjson", Path: "metadata.user_id"},
+				{Type: "context_int", Key: "token_id"},
+			},
+			ValueRegex:         "",
+			TTLSeconds:         0,
+			SkipRetryOnFailure: false,
+			IncludeUsingGroup:  true,
+			IncludeRuleName:    true,
+			UserAgentInclude:   nil,
+		},
 	},
 }
 

@@ -87,6 +87,26 @@ export const RULE_TEMPLATES: Record<string, RuleTemplate> = {
     include_model_name: false,
     include_rule_name: true,
   },
+  grokCli: {
+    name: 'grok cli trace',
+    model_regex: ['^grok'],
+    path_regex: ['/v1/chat/completions', '/v1/responses'],
+    key_sources: [
+      { type: 'request_header', key: 'X-Session-Id' },
+      { type: 'request_header', key: 'Session-Id' },
+      { type: 'gjson', path: 'prompt_cache_key' },
+      { type: 'gjson', path: 'user' },
+      { type: 'gjson', path: 'metadata.session_id' },
+      { type: 'gjson', path: 'metadata.user_id' },
+      { type: 'context_int', key: 'token_id' },
+    ],
+    value_regex: '',
+    ttl_seconds: 0,
+    skip_retry_on_failure: false,
+    include_using_group: true,
+    include_model_name: false,
+    include_rule_name: true,
+  },
 }
 
 export function makeUniqueName(
