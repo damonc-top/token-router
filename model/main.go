@@ -315,6 +315,9 @@ func migrateDB() error {
 		&Channel{},
 		&Token{},
 		&User{},
+		&UserSession{},
+		&AuthFlow{},
+		&ExternalIdentityClaim{},
 		&PasskeyCredential{},
 		&Option{},
 		&Redemption{},
@@ -347,6 +350,12 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := InitializeUserAuthVersions(); err != nil {
+		return err
+	}
+	if err := InitializeExternalIdentityClaims(); err != nil {
+		return err
+	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -370,6 +379,9 @@ func migrateDBFast() error {
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
+		{&UserSession{}, "UserSession"},
+		{&AuthFlow{}, "AuthFlow"},
+		{&ExternalIdentityClaim{}, "ExternalIdentityClaim"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
 		{&Option{}, "Option"},
 		{&Redemption{}, "Redemption"},
@@ -418,6 +430,12 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := InitializeUserAuthVersions(); err != nil {
+		return err
+	}
+	if err := InitializeExternalIdentityClaims(); err != nil {
+		return err
 	}
 	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {

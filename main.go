@@ -34,8 +34,6 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"golang.org/x/net/http2"
@@ -44,17 +42,11 @@ import (
 	_ "net/http/pprof"
 )
 
-//go:embed web/default/dist
+//go:embed web/dist
 var buildFS embed.FS
 
-//go:embed web/default/dist/index.html
+//go:embed web/dist/index.html
 var indexPage []byte
-
-//go:embed web/classic/dist
-var classicBuildFS embed.FS
-
-//go:embed web/classic/dist/index.html
-var classicIndexPage []byte
 
 func main() {
 	startTime := time.Now()
@@ -105,6 +97,10 @@ func main() {
 
 		go model.SyncChannelCache(common.SyncFrequency)
 	}
+
+	// Warm pricing after channel cache initialization so Advanced Custom
+	// endpoint inference can read cached route settings on first request.
+	model.GetPricing()
 
 	// 热更新配置
 	go model.SyncOptions(common.SyncFrequency)
@@ -176,6 +172,10 @@ func main() {
 
 	// Initialize HTTP server
 	server := gin.New()
+	if err := configureTrustedProxies(server); err != nil {
+		common.FatalLog("failed to configure trusted proxies: " + err.Error())
+		return
+	}
 	server.Use(gin.CustomRecovery(func(c *gin.Context, err any) {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -188,29 +188,16 @@ func main() {
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
-	server.Use(middleware.PoweredBy())
+	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
-	// Initialize session store
-	store := cookie.NewStore([]byte(common.SessionSecret))
-	store.Options(sessions.Options{
-		Path:     "/",
-		MaxAge:   2592000, // 30 days
-		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
-	})
-	server.Use(sessions.Sessions("session", store))
-
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
 
 	// 设置路由
-	router.SetRouter(server, router.ThemeAssets{
-		DefaultBuildFS:   buildFS,
-		DefaultIndexPage: indexPage,
-		ClassicBuildFS:   classicBuildFS,
-		ClassicIndexPage: classicIndexPage,
+	router.SetRouter(server, router.WebAssets{
+		BuildFS:   buildFS,
+		IndexPage: indexPage,
 	})
 	var port = os.Getenv("PORT")
 	if port == "" {
@@ -227,6 +214,8 @@ func main() {
 			common.FatalLog("failed to start HTTP server: " + err.Error())
 		}
 	})
+
+	time.Sleep(100 * time.Millisecond)
 
 	common.LogStartupSuccess(startTime, port)
 
@@ -274,7 +263,6 @@ func InjectUmamiAnalytics() {
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--umami-->\n")
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
-	classicIndexPage = bytes.ReplaceAll(classicIndexPage, placeholder, analyticsInject)
 }
 
 func InjectGoogleAnalytics() {
@@ -298,7 +286,6 @@ func InjectGoogleAnalytics() {
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--Google Analytics-->\n")
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
-	classicIndexPage = bytes.ReplaceAll(classicIndexPage, placeholder, analyticsInject)
 }
 
 func InitResources() error {
@@ -337,13 +324,15 @@ func InitResources() error {
 	model.CheckSetup()
 
 	// Initialize options, should after model.InitDB()
+	if common.IsMasterNode {
+		if err := model.MigrateRetiredFrontendOptions(); err != nil {
+			common.SysError("failed to migrate retired frontend options: " + err.Error())
+		}
+	}
 	model.InitOptionMap()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
-
-	// 初始化模型
-	model.GetPricing()
 
 	// Initialize SQL Database
 	err = model.InitLogDB()
@@ -385,6 +374,8 @@ func InitResources() error {
 		common.SysError("failed to load custom OAuth providers: " + err.Error())
 		// Don't return error, custom OAuth is not critical
 	}
+
+	service.StartAuthArtifactCleanup()
 
 	return nil
 }
