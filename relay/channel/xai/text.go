@@ -57,6 +57,8 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			usage.PromptTokens = xAIResp.Usage.PromptTokens
 			usage.TotalTokens = xAIResp.Usage.TotalTokens
 			usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+			// 拷贝缓存明细（cached_tokens 等），否则 tiered 计费 cr=0 导致缓存前缀被全价计费
+			usage.PromptTokensDetails = xAIResp.Usage.PromptTokensDetails
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
