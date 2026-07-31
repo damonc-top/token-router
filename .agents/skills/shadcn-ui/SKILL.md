@@ -1,11 +1,6 @@
 ---
 name: shadcn-ui
-description: >-
-  Give the assistant project-aware shadcn/ui context: components.json,
-  composition patterns, CLI, registries, theming, and MCP. Use when working on
-  web UI, shadcn components, or presets. Overview aligns with
-  https://ui.shadcn.com/docs/skills.md; full upstream skill text is vendored
-  under vendor/shadcn/.
+description: "shadcn/ui in this repo: components.json, CLI, composition, theming. Use for web UI components."
 ---
 
 <!-- Canonical overview: https://ui.shadcn.com/docs/skills.md -->

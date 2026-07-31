@@ -1,10 +1,6 @@
 ---
 name: model-mapping-audit
-description: >-
-  Audit model mapping vs upstream returned model names in new-api message logs.
-  Use when users ask to verify whether mapped models were actually sent
-  upstream and whether upstream returned canonical/aliased/replaced model names
-  (e.g. gpt-5.x, codex, -ops suffix cases).
+description: "Audit new-api message logs: requested vs upstream vs returned model names."
 ---
 
 # Model Mapping Audit (new-api)

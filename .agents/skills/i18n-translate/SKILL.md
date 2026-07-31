@@ -1,16 +1,6 @@
 ---
 name: i18n-translate
-description: >-
-  Complete and maintain frontend i18n translations for this project. Covers
-  finding missing translation keys, detecting untranslated entries, and adding
-  translations for all supported locales (en, zh, zh-TW, fr, ja, ru, vi). Use for any
-  task involving frontend locale files, missing translation keys, untranslated
-  UI text, `t(...)` keys, `useTranslation()`, static i18n keys, button/label/
-  toast/dialog/placeholder/validation copy, or adding/fixing even a single
-  i18n key. Use when review findings mention missing i18n, when new UI text
-  needs translation, or when the user asks to add translations, fix i18n, or
-  complete missing translations. Always load and follow this skill before
-  translating, adding locale keys, or editing frontend i18n files.
+description: "Frontend i18n: missing keys, untranslated locales, t()/useTranslation. Use before editing locale files."
 ---
 
 # Frontend i18n Translation Workflow
