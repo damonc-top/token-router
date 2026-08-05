@@ -1,5 +1,7 @@
 package common
 
+import "strings"
+
 type DatabaseType string
 
 const (
@@ -41,5 +43,15 @@ func UsingLogDatabase(databaseType DatabaseType) bool {
 	return logDatabaseType == databaseType
 }
 
-var SQLitePath = "one-api.db?_busy_timeout=30000&_journal_mode=WAL"
-var MsgLogSQLitePath = "message-log.db?_busy_timeout=30000&_journal_mode=WAL"
+const sqliteConnectionPragmas = "_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)"
+
+func sqliteDSN(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + sqliteConnectionPragmas
+}
+
+var SQLitePath = sqliteDSN("one-api.db")
+var MsgLogSQLitePath = sqliteDSN("message-log.db")

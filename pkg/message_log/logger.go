@@ -11,22 +11,24 @@ import (
 )
 
 type LogEntry struct {
-	RequestId         string
-	UserId            int
-	TokenId           int
-	ChannelId         int
-	ModelName         string
-	UpstreamModelName string
-	GroupName         string
-	RequestURL        string
-	RequestMethod     string
-	RequestHeaders    map[string]string
-	RequestBody       []byte
-	ResponseStatus    int
-	ResponseHeaders   map[string]string
-	ResponseBody      *bytes.Buffer
-	IsStream          bool
-	CreatedAt         int64
+	RequestId           string
+	UserId              int
+	TokenId             int
+	ChannelId           int
+	ModelName           string
+	UpstreamModelName   string
+	GroupName           string
+	RequestURL          string
+	RequestMethod       string
+	RequestHeaders      map[string]string
+	RequestBody         []byte
+	ResponseStatus      int
+	ResponseHeaders     map[string]string
+	ResponseBody        *bytes.Buffer
+	IsStream            bool
+	StreamEndReason     string
+	StreamResponseCount int
+	CreatedAt           int64
 }
 
 var (
@@ -35,9 +37,9 @@ var (
 )
 
 const (
-	channelSize    = 4096
-	batchSize      = 50
-	flushInterval  = time.Second
+	channelSize   = 4096
+	batchSize     = 50
+	flushInterval = time.Second
 )
 
 func Init() {
@@ -99,22 +101,24 @@ func entryToModel(e *LogEntry) *model.MessageLog {
 	}
 	bodySize := int64(len(e.RequestBody)) + int64(len(respBody))
 	return &model.MessageLog{
-		RequestId:         e.RequestId,
-		UserId:            e.UserId,
-		TokenId:           e.TokenId,
-		ChannelId:         e.ChannelId,
-		ModelName:         e.ModelName,
-		UpstreamModelName: e.UpstreamModelName,
-		GroupName:         e.GroupName,
-		RequestURL:        e.RequestURL,
-		RequestMethod:     e.RequestMethod,
-		RequestHeaders:    MarshalHeaders(e.RequestHeaders),
-		RequestBody:       e.RequestBody,
-		ResponseStatus:    e.ResponseStatus,
-		ResponseHeaders:   MarshalHeaders(e.ResponseHeaders),
-		ResponseBody:      respBody,
-		IsStream:          e.IsStream,
-		BodySize:          bodySize,
-		CreatedAt:         e.CreatedAt,
+		RequestId:           e.RequestId,
+		UserId:              e.UserId,
+		TokenId:             e.TokenId,
+		ChannelId:           e.ChannelId,
+		ModelName:           e.ModelName,
+		UpstreamModelName:   e.UpstreamModelName,
+		GroupName:           e.GroupName,
+		RequestURL:          e.RequestURL,
+		RequestMethod:       e.RequestMethod,
+		RequestHeaders:      MarshalHeaders(e.RequestHeaders),
+		RequestBody:         e.RequestBody,
+		ResponseStatus:      e.ResponseStatus,
+		ResponseHeaders:     MarshalHeaders(e.ResponseHeaders),
+		ResponseBody:        respBody,
+		IsStream:            e.IsStream,
+		StreamEndReason:     e.StreamEndReason,
+		StreamResponseCount: e.StreamResponseCount,
+		BodySize:            bodySize,
+		CreatedAt:           e.CreatedAt,
 	}
 }

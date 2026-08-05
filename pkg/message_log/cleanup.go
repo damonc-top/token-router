@@ -9,6 +9,8 @@ import (
 	"github.com/QuantumNous/new-api/setting/message_log_setting"
 )
 
+const maxMessageLogSizeCleanupRows = 5000
+
 func startCleanupLoop() {
 	if !common.IsMasterNode {
 		return
@@ -27,9 +29,12 @@ func startCleanupLoop() {
 			if !setting.Enabled {
 				return
 			}
-			deleted := cleanupByRetention(setting.RetentionDays)
-			deleted += cleanupByDiskSize(setting.MaxSizeMB)
-			if deleted > 0 {
+			retentionDeleted := cleanupByRetention(setting.RetentionDays)
+			if retentionDeleted > 0 && model.GetMessageLogTableSizeMB() > int64(setting.MaxSizeMB) {
+				vacuumIfSQLite()
+			}
+			sizeDeleted := cleanupByDiskSize(setting.MaxSizeMB)
+			if sizeDeleted > 0 {
 				vacuumIfSQLite()
 			}
 		}()
@@ -68,22 +73,26 @@ func cleanupByDiskSize(maxSizeMB int) int64 {
 	if maxSizeMB <= 0 {
 		return 0
 	}
-	currentSizeMB := model.GetMessageLogTableSizeMB()
-	if currentSizeMB <= int64(maxSizeMB) {
+	maxSizeBytes := int64(maxSizeMB) * 1024 * 1024
+	currentSizeBytes, err := model.GetMessageLogBodySizeBytes()
+	if err != nil {
+		common.SysError("message_log: read body size failed: " + err.Error())
 		return 0
 	}
-	var totalDeleted int64
-	for currentSizeMB > int64(maxSizeMB) {
-		deleted, err := model.DeleteOldestMessageLogs(200)
-		if err != nil {
-			common.SysError("message_log: cleanup by disk size failed: " + err.Error())
-			return totalDeleted
-		}
-		if deleted == 0 {
-			break
-		}
-		totalDeleted += deleted
-		currentSizeMB = model.GetMessageLogTableSizeMB()
+	if currentSizeBytes <= maxSizeBytes {
+		return 0
 	}
-	return totalDeleted
+
+	deleted, err := model.DeleteOldestMessageLogsBySize(
+		currentSizeBytes-maxSizeBytes,
+		maxMessageLogSizeCleanupRows,
+	)
+	if err != nil {
+		common.SysError("message_log: cleanup by disk size failed: " + err.Error())
+		return 0
+	}
+	if deleted > 0 {
+		common.SysLog(fmt.Sprintf("message_log: cleaned up %d oldest records to enforce the %d MiB payload limit", deleted, maxSizeMB))
+	}
+	return deleted
 }

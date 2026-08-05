@@ -536,23 +536,31 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 			io.TeeReader(resp.Body, &respBuf),
 			resp.Body,
 			func() {
+				streamEndReason := ""
+				streamResponseCount := 0
+				if info.StreamStatus != nil {
+					streamEndReason = string(info.StreamStatus.EndReason)
+					streamResponseCount = info.ReceivedResponseCount
+				}
 				messagelog.Submit(&messagelog.LogEntry{
-					RequestId:         info.RequestId,
-					UserId:            info.UserId,
-					TokenId:           info.TokenId,
-					ChannelId:         info.ChannelId,
-					ModelName:         info.OriginModelName,
-					UpstreamModelName: info.UpstreamModelName,
-					GroupName:         info.UsingGroup,
-					RequestURL:        req.URL.String(),
-					RequestMethod:     req.Method,
-					RequestHeaders:    messagelog.SanitizeHeaders(req.Header),
-					RequestBody:       capturedReqBody,
-					ResponseStatus:    resp.StatusCode,
-					ResponseHeaders:   messagelog.FlattenHeaders(resp.Header),
-					ResponseBody:      &respBuf,
-					IsStream:          info.IsStream,
-					CreatedAt:         common2.GetTimestamp(),
+					RequestId:           info.RequestId,
+					UserId:              info.UserId,
+					TokenId:             info.TokenId,
+					ChannelId:           info.ChannelId,
+					ModelName:           info.OriginModelName,
+					UpstreamModelName:   info.UpstreamModelName,
+					GroupName:           info.UsingGroup,
+					RequestURL:          req.URL.String(),
+					RequestMethod:       req.Method,
+					RequestHeaders:      messagelog.SanitizeHeaders(req.Header),
+					RequestBody:         capturedReqBody,
+					ResponseStatus:      resp.StatusCode,
+					ResponseHeaders:     messagelog.FlattenHeaders(resp.Header),
+					ResponseBody:        &respBuf,
+					IsStream:            info.IsStream,
+					StreamEndReason:     streamEndReason,
+					StreamResponseCount: streamResponseCount,
+					CreatedAt:           common2.GetTimestamp(),
 				})
 			},
 		)

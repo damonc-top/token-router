@@ -6,24 +6,26 @@ import (
 )
 
 type MessageLog struct {
-	Id                int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	RequestId         string `json:"request_id" gorm:"type:varchar(64);index:idx_msglog_request_id;default:''"`
-	UserId            int    `json:"user_id" gorm:"index"`
-	TokenId           int    `json:"token_id" gorm:"index"`
-	ChannelId         int    `json:"channel_id" gorm:"index"`
-	ModelName         string `json:"model_name" gorm:"type:varchar(128);index"`
-	UpstreamModelName string `json:"upstream_model_name" gorm:"type:varchar(128)"`
-	GroupName         string `json:"group_name" gorm:"type:varchar(64);index"`
-	RequestURL        string `json:"request_url" gorm:"type:text"`
-	RequestMethod     string `json:"request_method" gorm:"type:varchar(10)"`
-	RequestHeaders    string `json:"request_headers" gorm:"type:text"`
-	RequestBody       []byte `json:"request_body" gorm:"type:longblob"`
-	ResponseStatus    int    `json:"response_status"`
-	ResponseHeaders   string `json:"response_headers" gorm:"type:text"`
-	ResponseBody      []byte `json:"response_body" gorm:"type:longblob"`
-	IsStream          bool   `json:"is_stream"`
-	BodySize          int64  `json:"body_size" gorm:"index"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_msglog_created_at"`
+	Id                  int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	RequestId           string `json:"request_id" gorm:"type:varchar(64);index:idx_msglog_request_id;default:''"`
+	UserId              int    `json:"user_id" gorm:"index"`
+	TokenId             int    `json:"token_id" gorm:"index"`
+	ChannelId           int    `json:"channel_id" gorm:"index"`
+	ModelName           string `json:"model_name" gorm:"type:varchar(128);index"`
+	UpstreamModelName   string `json:"upstream_model_name" gorm:"type:varchar(128)"`
+	GroupName           string `json:"group_name" gorm:"type:varchar(64);index"`
+	RequestURL          string `json:"request_url" gorm:"type:text"`
+	RequestMethod       string `json:"request_method" gorm:"type:varchar(10)"`
+	RequestHeaders      string `json:"request_headers" gorm:"type:text"`
+	RequestBody         []byte `json:"request_body" gorm:"type:longblob"`
+	ResponseStatus      int    `json:"response_status"`
+	ResponseHeaders     string `json:"response_headers" gorm:"type:text"`
+	ResponseBody        []byte `json:"response_body" gorm:"type:longblob"`
+	IsStream            bool   `json:"is_stream"`
+	StreamEndReason     string `json:"stream_end_reason" gorm:"type:varchar(32)"`
+	StreamResponseCount int    `json:"stream_response_count"`
+	BodySize            int64  `json:"body_size" gorm:"index"`
+	CreatedAt           int64  `json:"created_at" gorm:"bigint;index:idx_msglog_created_at"`
 }
 
 func (MessageLog) TableName() string {
@@ -69,7 +71,7 @@ func GetMessageLogs(page, pageSize int, requestId string, modelName string, chan
 		return nil, 0, err
 	}
 
-	err = tx.Select("id, request_id, user_id, token_id, channel_id, model_name, upstream_model_name, group_name, request_url, request_method, response_status, is_stream, body_size, created_at").
+	err = tx.Select("id, request_id, user_id, token_id, channel_id, model_name, upstream_model_name, group_name, request_url, request_method, response_status, is_stream, stream_end_reason, stream_response_count, body_size, created_at").
 		Order("id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
@@ -105,6 +107,64 @@ func DeleteOldestMessageLogs(limit int) (int64, error) {
 	return deleteMessageLogBatch(func(tx *gorm.DB) *gorm.DB {
 		return tx.Order("created_at ASC")
 	}, limit)
+}
+
+type messageLogSizeRecord struct {
+	Id       int   `gorm:"column:id"`
+	BodySize int64 `gorm:"column:body_size"`
+}
+
+const messageLogDeleteBatchSize = 500
+
+func DeleteOldestMessageLogsBySize(targetBytes int64, maxRows int) (int64, error) {
+	if targetBytes <= 0 || maxRows <= 0 {
+		return 0, nil
+	}
+
+	records := make([]messageLogSizeRecord, 0, maxRows)
+	err := MSG_LOG_DB.Session(&gorm.Session{SkipDefaultTransaction: true}).
+		Model(&MessageLog{}).
+		Select("id, body_size").
+		Order("created_at ASC").
+		Order("id ASC").
+		Limit(maxRows).
+		Find(&records).Error
+	if err != nil {
+		return 0, err
+	}
+
+	ids := make([]int, 0, len(records))
+	remainingBytes := targetBytes
+	for _, record := range records {
+		bodySize := record.BodySize
+		if bodySize < 1 {
+			bodySize = 1
+		}
+		ids = append(ids, record.Id)
+		if bodySize >= remainingBytes {
+			break
+		}
+		remainingBytes -= bodySize
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	var totalDeleted int64
+	for start := 0; start < len(ids); start += messageLogDeleteBatchSize {
+		end := start + messageLogDeleteBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		result := MSG_LOG_DB.Session(&gorm.Session{SkipDefaultTransaction: true}).
+			Where("id IN ?", ids[start:end]).
+			Delete(&MessageLog{})
+		if result.Error != nil {
+			return totalDeleted, result.Error
+		}
+		totalDeleted += result.RowsAffected
+	}
+	return totalDeleted, nil
 }
 
 func deleteMessageLogBatch(scope func(*gorm.DB) *gorm.DB, limit int) (int64, error) {
@@ -159,6 +219,14 @@ func getMessageLogTableSizeMB() int64 {
 
 func GetMessageLogTableSizeMB() int64 {
 	return getMessageLogTableSizeMB()
+}
+
+func GetMessageLogBodySizeBytes() (int64, error) {
+	var sizeBytes int64
+	err := MSG_LOG_DB.Model(&MessageLog{}).
+		Select("COALESCE(SUM(body_size), 0)").
+		Scan(&sizeBytes).Error
+	return sizeBytes, err
 }
 
 func GetMessageLogCount() int64 {
