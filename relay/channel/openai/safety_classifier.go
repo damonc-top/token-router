@@ -9,9 +9,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -50,24 +50,24 @@ const (
 var openAICodeSafetyClassifierFallbackChannelTypes = map[int]struct{}{
 	constant.ChannelTypeOpenAI:         {},
 	constant.ChannelTypeAzure:          {},
-	constant.ChannelTypeOpenRouter:    {},
+	constant.ChannelTypeOpenRouter:     {},
 	constant.ChannelTypeCustom:         {},
-	constant.ChannelTypeLingYiWanWu:   {},
+	constant.ChannelTypeLingYiWanWu:    {},
 	constant.ChannelTypeOllama:         {},
 	constant.ChannelTypeXinference:     {},
-	constant.ChannelTypeFastGPT:       {},
-	constant.ChannelType360:           {},
-	constant.ChannelTypeDeepSeek:      {},
-	constant.ChannelTypeMoonshot:      {},
-	constant.ChannelTypeMiniMax:       {},
-	constant.ChannelTypeXai:           {},
-	constant.ChannelTypeSubmodel:      {},
-	constant.ChannelTypeCodex:         {},
+	constant.ChannelTypeFastGPT:        {},
+	constant.ChannelType360:            {},
+	constant.ChannelTypeDeepSeek:       {},
+	constant.ChannelTypeMoonshot:       {},
+	constant.ChannelTypeMiniMax:        {},
+	constant.ChannelTypeXai:            {},
+	constant.ChannelTypeSubmodel:       {},
+	constant.ChannelTypeCodex:          {},
 	constant.ChannelTypeSiliconFlow:    {},
-	constant.ChannelTypeZhipu_v4:      {},
-	constant.ChannelTypeAli:           {},
-	constant.ChannelTypeBaiduV2:      {},
-	constant.ChannelTypeVolcEngine:    {},
+	constant.ChannelTypeZhipu_v4:       {},
+	constant.ChannelTypeAli:            {},
+	constant.ChannelTypeBaiduV2:        {},
+	constant.ChannelTypeVolcEngine:     {},
 	constant.ChannelTypeAdvancedCustom: {},
 }
 
@@ -262,10 +262,10 @@ func buildOpenAICodeSafetyClassifierChatResponse(info *relaycommon.RelayInfo) (a
 	}
 
 	return map[string]any{
-		"id":                respID,
-		"object":            "chat.completion",
-		"created":           created,
-		"model":             model,
+		"id":                 respID,
+		"object":             "chat.completion",
+		"created":            created,
+		"model":              model,
 		"system_fingerprint": nil,
 		"choices": []map[string]any{
 			{
@@ -276,7 +276,7 @@ func buildOpenAICodeSafetyClassifierChatResponse(info *relaycommon.RelayInfo) (a
 					"refusal": nil,
 				},
 				"finish_reason": "stop",
-				"logprobs":     nil,
+				"logprobs":      nil,
 			},
 		},
 		"usage": usage,
@@ -311,8 +311,8 @@ func buildOpenAICodeSafetyClassifierResponsesResponse(info *relaycommon.RelayInf
 		// Responses-API handlers read input_tokens / output_tokens (not
 		// prompt_tokens / completion_tokens), so populate both sets so the
 		// stub bills consistently regardless of which handler consumes it.
-		InputTokens:       prompt,
-		OutputTokens:      openAICodeSafetyClassifierOutputTokens,
+		InputTokens:  prompt,
+		OutputTokens: openAICodeSafetyClassifierOutputTokens,
 		PromptTokensDetails: dto.InputTokenDetails{
 			CachedTokens: 0,
 		},

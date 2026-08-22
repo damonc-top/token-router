@@ -6,8 +6,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 
 	"github.com/stretchr/testify/require"
 )
@@ -43,10 +43,10 @@ func TestIsClaudeCodeSafetyClassifierRequestRejectsNormalToolRequest(t *testing.
 func TestIsClaudeCodeSafetyClassifierRequestMatchesRealStage1Call(t *testing.T) {
 	maxTokens := uint(2112)
 	request := &dto.ClaudeRequest{
-		System:         claudeCodeSafetyClassifierSystemMarker,
-		MaxTokens:      &maxTokens,
-		StopSequences:  []string{claudeCodeSafetyClassifierBlockStopSeq},
-		Tools:          []any{},
+		System:        claudeCodeSafetyClassifierSystemMarker,
+		MaxTokens:     &maxTokens,
+		StopSequences: []string{claudeCodeSafetyClassifierBlockStopSeq},
+		Tools:         []any{},
 	}
 
 	require.True(t, isClaudeCodeSafetyClassifierRequest(request))

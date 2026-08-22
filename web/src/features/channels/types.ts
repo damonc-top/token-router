@@ -92,6 +92,8 @@ export interface ChannelSettings {
   pass_through_body_enabled?: boolean
   system_prompt?: string
   system_prompt_override?: boolean
+  http_protocol?: 'auto' | 'http1' | string
+  http2_connection_shards?: number
 }
 
 export interface ChannelOtherSettings {
@@ -202,6 +204,7 @@ export interface ChannelBalanceResponse {
   message?: string
   balance?: number
   currency?: string
+  raw_response?: string
 }
 
 export interface FetchModelsResponse {

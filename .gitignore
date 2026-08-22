@@ -52,3 +52,5 @@ _tmp_mem_diag2.py
 message-log.db-shm
 message-log.db-wal
 one-api.db-shm
+go.work
+go.work.sum

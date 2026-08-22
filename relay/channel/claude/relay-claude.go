@@ -7,14 +7,14 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/relayconvert"
 	"github.com/QuantumNous/new-api/setting/model_setting"
-	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/sjson"
@@ -73,7 +73,7 @@ func shouldSkipClaudeMessageDeltaUsagePatch(info *relaycommon.RelayInfo) bool {
 	if info == nil {
 		return false
 	}
-	return info.ChannelSetting.PassThroughBodyEnabled
+	return info.HasChannelMeta() && info.ChannelSetting.PassThroughBodyEnabled
 }
 
 type deepSeekAnthropicCompatUsage struct {
@@ -199,7 +199,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		common.SysLog("error unmarshalling stream response: " + err.Error())
 		return types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	if info != nil && info.ChannelType == constant.ChannelTypeDeepSeek {
+	if info.HasChannelMeta() && info.ChannelType == constant.ChannelTypeDeepSeek {
 		hydrateDeepSeekClaudeUsageFromCompat(&claudeResponse, data)
 	}
 	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
@@ -218,7 +218,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			// message_start, 获取usage
 			if claudeResponse.Message != nil {
 				info.UpstreamModelName = claudeResponse.Message.Model
-				if info.IsModelMapped && claudeResponse.Message.Model != info.OriginModelName {
+				if info.HasChannelMeta() && info.IsModelMapped && claudeResponse.Message.Model != info.OriginModelName {
 					if patched, err := sjson.Set(data, "message.model", info.OriginModelName); err == nil {
 						data = patched
 					}
@@ -231,6 +231,7 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 				data = patchClaudeMessageDeltaUsageData(data, buildMessageDeltaPatchUsage(&claudeResponse, claudeInfo))
 			}
 		}
+		countClaudeStreamBillableTools(c, info, &claudeResponse)
 		writeClaudeStreamEvents(c, claudeInfo.SanitizeStreamEvent(&claudeResponse, data))
 	} else if info.RelayFormat == types.RelayFormatOpenAI {
 		response := StreamResponseClaude2OpenAI(&claudeResponse)
@@ -239,12 +240,31 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			return nil
 		}
 
+		countClaudeStreamBillableTools(c, info, &claudeResponse)
+
 		err = helper.ObjectData(c, response)
 		if err != nil {
 			logger.LogError(c, "send_stream_response_failed: "+err.Error())
 		}
 	}
 	return nil
+}
+
+func countClaudeStreamBillableTools(c *gin.Context, info *relaycommon.RelayInfo, claudeResponse *dto.ClaudeResponse) {
+	if claudeResponse == nil {
+		return
+	}
+	if claudeResponse.Type == "content_block_start" &&
+		claudeResponse.ContentBlock != nil &&
+		claudeResponse.ContentBlock.Type == "tool_use" {
+		info.CountBillableToolCall(dto.BuildInCallToolUse, claudeResponse.ContentBlock.Name)
+	}
+	if claudeResponse.Type == "message_delta" &&
+		claudeResponse.Usage != nil &&
+		claudeResponse.Usage.ServerToolUse != nil &&
+		claudeResponse.Usage.ServerToolUse.WebSearchRequests > 0 {
+		c.Set("claude_web_search_requests", claudeResponse.Usage.ServerToolUse.WebSearchRequests)
+	}
 }
 
 func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
@@ -328,7 +348,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	if info != nil && info.ChannelType == constant.ChannelTypeDeepSeek {
+	if info.HasChannelMeta() && info.ChannelType == constant.ChannelTypeDeepSeek {
 		hydrateDeepSeekClaudeUsageFromCompat(&claudeResponse, string(data))
 	}
 	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
@@ -360,7 +380,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		}
 	case types.RelayFormatClaude:
 		responseData = data
-		if info.IsModelMapped && claudeResponse.Model != info.OriginModelName {
+		if info.HasChannelMeta() && info.IsModelMapped && claudeResponse.Model != info.OriginModelName {
 			if patched, pErr := sjson.SetBytes(responseData, "model", info.OriginModelName); pErr == nil {
 				responseData = patched
 			}
@@ -369,6 +389,12 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 
 	if claudeResponse.Usage != nil && claudeResponse.Usage.ServerToolUse != nil && claudeResponse.Usage.ServerToolUse.WebSearchRequests > 0 {
 		c.Set("claude_web_search_requests", claudeResponse.Usage.ServerToolUse.WebSearchRequests)
+	}
+
+	for _, block := range claudeResponse.Content {
+		if block.Type == "tool_use" {
+			info.CountBillableToolCall(dto.BuildInCallToolUse, block.Name)
+		}
 	}
 
 	service.IOCopyBytesGracefully(c, httpResp, responseData)

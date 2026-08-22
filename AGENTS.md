@@ -16,6 +16,11 @@ Key directories: `router/`, `controller/`, `service/`, `model/`, `relay/channel/
 
 ## Backend
 
+### Relaykit module
+
+- `relaykit/` must remain independently buildable and cannot import packages from the root `new-api` module or depend on root-only configuration.
+- Changes affecting `relaykit/` or its public APIs require verification with `cd relaykit && GOWORK=off go build ./...`.
+
 ### JSON
 
 Use only `common.Marshal`, `common.Unmarshal`, `common.UnmarshalJsonStr`, `common.DecodeJson`, and `common.GetJsonType` for JSON operations. Business code must not marshal or unmarshal through `encoding/json`; its types such as `json.RawMessage` and `json.Number` are allowed.
