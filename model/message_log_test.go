@@ -1,8 +1,10 @@
 package model
 
 import (
+	"path/filepath"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -143,4 +145,27 @@ func TestMessageLogStoresStreamDiagnostics(t *testing.T) {
 	assert.True(t, stored.IsStream)
 	assert.Equal(t, "scanner_error", stored.StreamEndReason)
 	assert.Equal(t, 3, stored.StreamResponseCount)
+}
+
+func TestCheckpointMessageLogDBOnFileSQLite(t *testing.T) {
+	originalType := common.LogDatabaseType()
+	common.SetLogDatabaseType(common.DatabaseTypeSQLite)
+	t.Cleanup(func() { common.SetLogDatabaseType(originalType) })
+
+	original := MSG_LOG_DB
+	path := filepath.Join(t.TempDir(), "msg-check.db")
+	db, err := gorm.Open(sqlite.Open(path+"?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"), &gorm.Config{SkipDefaultTransaction: true})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&MessageLog{}))
+	MSG_LOG_DB = db
+	t.Cleanup(func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		MSG_LOG_DB = original
+	})
+
+	require.NoError(t, MSG_LOG_DB.Create(&MessageLog{RequestId: "r", BodySize: 1, CreatedAt: 1}).Error)
+	require.NoError(t, CheckpointMessageLogDB("TRUNCATE"))
+	require.NoError(t, CheckpointMessageLogDB("PASSIVE"))
 }

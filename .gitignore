@@ -45,3 +45,10 @@ new-api.log
 .local-tests/
 service/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
+one-api.db-wal
+_tmp_mem.py
+_tmp_mem_diag.py
+_tmp_mem_diag2.py
+message-log.db-shm
+message-log.db-wal
+one-api.db-shm

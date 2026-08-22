@@ -19,6 +19,8 @@ type ClaudeResponseInfo struct {
 	ResponseText strings.Builder
 	Usage        *dto.Usage
 	Done         bool
+
+	StreamSanitizer *ClaudeStreamSanitizer
 }
 
 func StopReasonClaudeToOpenAI(reason string) string {

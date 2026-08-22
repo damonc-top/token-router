@@ -300,6 +300,28 @@ func InitMsgLogDB() error {
 			return err
 		}
 	}
+	// Best-effort async checkpoint: a multi-GB WAL must not block HTTP listen.
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) || common.UsingLogDatabase(common.DatabaseTypeSQLite) {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					common.SysError(fmt.Sprintf("message_log: startup checkpoint panic: %v", r))
+				}
+			}()
+			if err := CheckpointMessageLogDB("PASSIVE"); err != nil {
+				common.SysLog("message_log: startup wal_checkpoint(PASSIVE): " + err.Error())
+			}
+			if err := CheckpointMessageLogDB("TRUNCATE"); err != nil {
+				common.SysLog("message_log: startup wal_checkpoint(TRUNCATE): " + err.Error())
+				return
+			}
+			if usage, err := GetMessageLogDiskUsageBytes(); err == nil {
+				common.SysLog(fmt.Sprintf("message_log: startup wal_checkpoint(TRUNCATE) completed, disk usage %d MiB", usage/(1024*1024)))
+			} else {
+				common.SysLog("message_log: startup wal_checkpoint(TRUNCATE) completed")
+			}
+		}()
+	}
 	return nil
 }
 

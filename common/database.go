@@ -43,15 +43,31 @@ func UsingLogDatabase(databaseType DatabaseType) bool {
 	return logDatabaseType == databaseType
 }
 
+// Primary SQLite DSN pragmas. Keep conservative durability for the main DB.
 const sqliteConnectionPragmas = "_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)"
 
-func sqliteDSN(path string) string {
+// Message-log SQLite pragmas: still WAL for concurrency, but NORMAL sync and
+// memory temp store cut fsync/write amplification on large BLOB inserts.
+const msgLogSQLiteConnectionPragmas = "_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)"
+
+// MsgLogSQLiteFileName is the on-disk basename (no query string) for message-log.db.
+const MsgLogSQLiteFileName = "message-log.db"
+
+func sqliteDSNWithPragmas(path, pragmas string) string {
 	separator := "?"
 	if strings.Contains(path, "?") {
 		separator = "&"
 	}
-	return path + separator + sqliteConnectionPragmas
+	return path + separator + pragmas
+}
+
+func sqliteDSN(path string) string {
+	return sqliteDSNWithPragmas(path, sqliteConnectionPragmas)
+}
+
+func msgLogSQLiteDSN(path string) string {
+	return sqliteDSNWithPragmas(path, msgLogSQLiteConnectionPragmas)
 }
 
 var SQLitePath = sqliteDSN("one-api.db")
-var MsgLogSQLitePath = sqliteDSN("message-log.db")
+var MsgLogSQLitePath = msgLogSQLiteDSN(MsgLogSQLiteFileName)

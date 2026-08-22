@@ -48,6 +48,13 @@ func init() {
 
 // syncToCommon 将配置同步到 common 包
 func syncToCommon() {
+	// Runtime-normalize unusable paths (e.g. macOS absolute path on Windows).
+	// Keep the in-memory setting aligned with what common actually uses.
+	normalized := common.NormalizeDiskCachePath(performanceSetting.DiskCachePath)
+	if normalized != performanceSetting.DiskCachePath {
+		performanceSetting.DiskCachePath = normalized
+	}
+
 	common.SetDiskCacheConfig(common.DiskCacheConfig{
 		Enabled:     performanceSetting.DiskCacheEnabled,
 		ThresholdMB: performanceSetting.DiskCacheThresholdMB,

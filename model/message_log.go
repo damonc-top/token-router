@@ -1,6 +1,13 @@
 package model
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
@@ -202,6 +209,11 @@ func GetMessageLogStats() (*MessageLogStats, error) {
 }
 
 func getMessageLogTableSizeMB() int64 {
+	diskBytes, err := GetMessageLogDiskUsageBytes()
+	if err == nil && diskBytes > 0 {
+		return diskBytes / (1024 * 1024)
+	}
+
 	var sizeMB int64
 	switch {
 	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
@@ -219,6 +231,47 @@ func getMessageLogTableSizeMB() int64 {
 
 func GetMessageLogTableSizeMB() int64 {
 	return getMessageLogTableSizeMB()
+}
+
+// GetMessageLogDiskUsageBytes returns on-disk usage for the message-log SQLite files
+// including the main DB and WAL/SHM sidecars when present.
+func GetMessageLogDiskUsageBytes() (int64, error) {
+	if !common.UsingLogDatabase(common.DatabaseTypeSQLite) {
+		// Non-SQLite: approximate with body payload size.
+		return GetMessageLogBodySizeBytes()
+	}
+
+	basePath := resolveMessageLogSQLitePath()
+	var total int64
+	for _, path := range []string{basePath, basePath + "-wal", basePath + "-shm"} {
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return 0, err
+		}
+		total += info.Size()
+	}
+	return total, nil
+}
+
+func resolveMessageLogSQLitePath() string {
+	dsn := common.MsgLogSQLitePath
+	if i := strings.Index(dsn, "?"); i >= 0 {
+		dsn = dsn[:i]
+	}
+	dsn = strings.TrimPrefix(dsn, "file:")
+	if dsn == "" {
+		dsn = common.MsgLogSQLiteFileName
+	}
+	if filepath.IsAbs(dsn) {
+		return dsn
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return filepath.Join(wd, dsn)
+	}
+	return dsn
 }
 
 func GetMessageLogBodySizeBytes() (int64, error) {
@@ -240,6 +293,49 @@ func DeleteAllMessageLogs() (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+// CheckpointMessageLogDB runs PRAGMA wal_checkpoint for the message-log SQLite DB.
+// mode should be PASSIVE, FULL, RESTART, or TRUNCATE.
+func CheckpointMessageLogDB(mode string) error {
+	if !common.UsingLogDatabase(common.DatabaseTypeSQLite) {
+		return nil
+	}
+	if MSG_LOG_DB == nil {
+		return fmt.Errorf("message log db is not initialized")
+	}
+	mode = strings.ToUpper(strings.TrimSpace(mode))
+	switch mode {
+	case "PASSIVE", "FULL", "RESTART", "TRUNCATE":
+	default:
+		mode = "PASSIVE"
+	}
+	sqlDB, err := MSG_LOG_DB.DB()
+	if err != nil {
+		return err
+	}
+	// busy/log/checkpointed
+	row := sqlDB.QueryRow(fmt.Sprintf("PRAGMA wal_checkpoint(%s)", mode))
+	var busy, logFrames, checkpointed int64
+	if err := row.Scan(&busy, &logFrames, &checkpointed); err != nil {
+		// Some drivers return no rows on success; fall back to Exec.
+		if _, execErr := sqlDB.Exec(fmt.Sprintf("PRAGMA wal_checkpoint(%s)", mode)); execErr != nil {
+			return execErr
+		}
+		return nil
+	}
+	if busy != 0 {
+		return fmt.Errorf("wal_checkpoint(%s) busy=%d log=%d checkpointed=%d", mode, busy, logFrames, checkpointed)
+	}
+	return nil
+}
+
+var (
+	messageLogLastVacuumMu sync.Mutex
+	messageLogLastVacuumAt time.Time
+)
+
+// MessageLogVacuumMinInterval avoids thrashing VACUUM on large SQLite files.
+const MessageLogVacuumMinInterval = 6 * time.Hour
+
 func VacuumMessageLogDB() error {
 	if !common.UsingLogDatabase(common.DatabaseTypeSQLite) {
 		return nil
@@ -249,5 +345,21 @@ func VacuumMessageLogDB() error {
 		return err
 	}
 	_, err = sqlDB.Exec("VACUUM")
+	if err == nil {
+		messageLogLastVacuumMu.Lock()
+		messageLogLastVacuumAt = time.Now()
+		messageLogLastVacuumMu.Unlock()
+	}
 	return err
+}
+
+// MaybeVacuumMessageLogDB runs VACUUM only after the cooldown has elapsed.
+func MaybeVacuumMessageLogDB() error {
+	messageLogLastVacuumMu.Lock()
+	last := messageLogLastVacuumAt
+	messageLogLastVacuumMu.Unlock()
+	if !last.IsZero() && time.Since(last) < MessageLogVacuumMinInterval {
+		return nil
+	}
+	return VacuumMessageLogDB()
 }

@@ -10,6 +10,7 @@ import (
 )
 
 type ClaudeResponseInfo = claudemessages.ClaudeResponseInfo
+type ClaudeSanitizedEvent = claudemessages.ClaudeSanitizedEvent
 
 type ChatToResponsesStreamEvent = oaichat.ChatToResponsesStreamEvent
 type ChatToResponsesStreamState = oaichat.ChatToResponsesStreamState

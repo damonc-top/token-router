@@ -1,6 +1,10 @@
 package common
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -37,6 +41,7 @@ func GetDiskCacheConfig() DiskCacheConfig {
 func SetDiskCacheConfig(config DiskCacheConfig) {
 	diskCacheConfigMu.Lock()
 	defer diskCacheConfigMu.Unlock()
+	config.Path = NormalizeDiskCachePath(config.Path)
 	diskCacheConfig = config
 }
 
@@ -61,11 +66,53 @@ func GetDiskCacheMaxSizeBytes() int64 {
 	return int64(diskCacheConfig.MaxSizeMB) << 20
 }
 
-// GetDiskCachePath 获取磁盘缓存目录
+// GetDiskCachePath 获取磁盘缓存目录（已规范化；空表示使用系统临时目录）
 func GetDiskCachePath() string {
 	diskCacheConfigMu.RLock()
 	defer diskCacheConfigMu.RUnlock()
 	return diskCacheConfig.Path
+}
+
+// NormalizeDiskCachePath returns a usable parent directory for the body cache.
+// Empty, foreign-OS absolute paths, and paths that cannot be created fall back to os.TempDir().
+// The returned value is the parent path (not including the new-api-body-cache leaf).
+func NormalizeDiskCachePath(path string) string {
+	path = strings.TrimSpace(path)
+	fallback := os.TempDir()
+	if path == "" {
+		return fallback
+	}
+	if !isUsableDiskCachePath(path) {
+		return fallback
+	}
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return fallback
+	}
+	return path
+}
+
+func isUsableDiskCachePath(path string) bool {
+	// Reject obvious cross-OS absolute paths that cannot work on the current host.
+	if runtime.GOOS == "windows" {
+		// Unix-style absolute path: /Users/... or /tmp/...
+		if strings.HasPrefix(path, "/") {
+			return false
+		}
+		// UNC is allowed; drive-relative like C:\ is fine.
+		return true
+	}
+	// Non-Windows: reject Windows drive paths and UNC.
+	if len(path) >= 2 && path[1] == ':' {
+		return false
+	}
+	if strings.HasPrefix(path, `\\`) || strings.HasPrefix(path, "//") {
+		// UNC on non-Windows is not usable for local cache.
+		if !filepath.IsAbs(path) || strings.HasPrefix(path, `\\`) {
+			return false
+		}
+	}
+	// On Unix, relative paths are ok; absolute Unix paths are ok.
+	return true
 }
 
 // DiskCacheStats 磁盘缓存统计信息

@@ -38,12 +38,17 @@ function Get-ManagedProcesses {
     return @(
         Get-CimInstance -ClassName Win32_Process -Filter "Name='$name'" |
             Where-Object {
-                -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
-                    [string]::Equals(
+                if (-not [string]::IsNullOrWhiteSpace($_.ExecutablePath)) {
+                    return [string]::Equals(
                         [System.IO.Path]::GetFullPath($_.ExecutablePath),
                         $resolvedPath,
                         [System.StringComparison]::OrdinalIgnoreCase
                     )
+                }
+                if (-not [string]::IsNullOrWhiteSpace($_.CommandLine)) {
+                    return $_.CommandLine.IndexOf($resolvedPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+                }
+                return $true
             }
     )
 }
@@ -228,7 +233,7 @@ if (-not $UseEnvironmentProxy) {
         HTTP_PROXY  = ''
         HTTPS_PROXY = ''
         ALL_PROXY   = ''
-        NO_PROXY    = '127.0.0.1,localhost,::1'
+        NO_PROXY    = '127.0.0.1,localhost,::1,argotunnel.com,.argotunnel.com,cloudflare.com,.cloudflare.com,cloudflarestatus.com,.cloudflarestatus.com,api.seawork.ai,seawork.ai,.seawork.ai'
     }
 }
 
@@ -289,7 +294,7 @@ if (-not $tunnelMatch.Success) {
 }
 $tunnelProcess = Start-ManagedProcess `
     -FilePath $cloudflaredPath `
-    -Arguments @('--config', $tunnelConfig, 'tunnel', 'run', $tunnelMatch.Groups[1].Value) `
+    -Arguments @('--config', $tunnelConfig, '--protocol', 'http2', 'tunnel', 'run', $tunnelMatch.Groups[1].Value) `
     -WorkingDirectory $workspace `
     -StandardOutputPath $tunnelStdout `
     -StandardErrorPath $tunnelStderr `

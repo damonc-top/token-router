@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	channelUpstreamModelUpdateTaskDefaultIntervalMinutes  = 30
+	channelUpstreamModelUpdateTaskDefaultIntervalMinutes  = 7 * 24 * 60
 	channelUpstreamModelUpdateTaskBatchSize               = 100
 	channelUpstreamModelUpdateMinCheckIntervalSeconds     = 300
 	channelUpstreamModelUpdateNotifySuppressWindowSeconds = 86400
