@@ -160,3 +160,43 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	}
 	return channel, selectGroup, nil
 }
+
+// CacheGetNextSatisfiedChannel selects the next eligible channel by ascending
+// channel ID and wraps to the smallest ID after the end of the candidate list.
+// It is used only after a relay attempt has failed.
+func CacheGetNextSatisfiedChannel(param *RetryParam, afterChannelID int) (*model.Channel, string, error) {
+	selectGroup := param.TokenGroup
+	if param.TokenGroup != "auto" {
+		channel, err := model.GetNextSatisfiedChannel(param.TokenGroup, param.ModelName, afterChannelID, param.RequestPath)
+		return channel, selectGroup, err
+	}
+
+	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	autoGroups := GetRequestAutoGroups(param.Ctx, userGroup)
+	if len(autoGroups) == 0 {
+		return nil, selectGroup, errors.New("auto groups is not enabled")
+	}
+
+	startGroupIndex := 0
+	if lastGroupIndex, exists := common.GetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex); exists {
+		if index, ok := lastGroupIndex.(int); ok && index >= 0 && index < len(autoGroups) {
+			startGroupIndex = index
+		}
+	}
+
+	for index := startGroupIndex; index < len(autoGroups); index++ {
+		autoGroup := autoGroups[index]
+		channel, err := model.GetNextSatisfiedChannel(autoGroup, param.ModelName, afterChannelID, param.RequestPath)
+		if err != nil {
+			return nil, autoGroup, err
+		}
+		if channel == nil {
+			continue
+		}
+		common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, autoGroup)
+		common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, index)
+		return channel, autoGroup, nil
+	}
+
+	return nil, selectGroup, nil
+}

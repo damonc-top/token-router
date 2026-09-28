@@ -210,6 +210,51 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	return nil, errors.New("channel not found")
 }
 
+// GetNextSatisfiedChannel returns the next eligible channel by ascending ID.
+// When no eligible channel has an ID greater than afterChannelID, it wraps to
+// the smallest eligible ID.
+func GetNextSatisfiedChannel(group string, model string, afterChannelID int, requestPath string) (*Channel, error) {
+	if !common.MemoryCacheEnabled {
+		return getNextSatisfiedChannel(group, model, afterChannelID, requestPath)
+	}
+
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+
+	channels := filterChannelsByRequestPathAndModel(group2model2channels[group][model], requestPath, model)
+	if len(channels) == 0 {
+		normalizedModel := ratio_setting.FormatMatchingModelName(model)
+		channels = filterChannelsByRequestPathAndModel(group2model2channels[group][normalizedModel], requestPath, model)
+	}
+	if len(channels) == 0 {
+		return nil, nil
+	}
+
+	eligibleChannels := make([]*Channel, 0, len(channels))
+	for _, channelID := range channels {
+		channel, ok := channelsIDM[channelID]
+		if !ok {
+			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelID)
+		}
+		if channel.CanParticipateInWeightRandom() {
+			eligibleChannels = append(eligibleChannels, channel)
+		}
+	}
+	if len(eligibleChannels) == 0 {
+		return nil, nil
+	}
+
+	sort.Slice(eligibleChannels, func(i, j int) bool {
+		return eligibleChannels[i].Id < eligibleChannels[j].Id
+	})
+	for _, channel := range eligibleChannels {
+		if channel.Id > afterChannelID {
+			return channel, nil
+		}
+	}
+	return eligibleChannels[0], nil
+}
+
 // filterChannelsByRequestPathAndModel restricts candidates by request path and
 // model. Only Advanced Custom (type 58) channels are path-checked: they are kept
 // only when one of their configured routes matches requestPath and model. All

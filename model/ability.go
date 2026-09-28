@@ -160,6 +160,37 @@ func GetChannel(group string, model string, retry int, requestPath string) (*Cha
 	return &channel, err
 }
 
+func getNextSatisfiedChannel(group string, model string, afterChannelID int, requestPath string) (*Channel, error) {
+	eligibleChannelSubQuery := getWeightRandomEligibleChannelSubQuery()
+	var abilities []Ability
+	err := DB.Model(&Ability{}).
+		Where(commonGroupCol+" = ? and model = ? and enabled = ? and channel_id IN (?)", group, model, true, eligibleChannelSubQuery).
+		Order("channel_id ASC").
+		Find(&abilities).Error
+	if err != nil {
+		return nil, err
+	}
+
+	abilities = filterAbilitiesByRequestPathAndModel(abilities, requestPath, model)
+	if len(abilities) == 0 {
+		return nil, nil
+	}
+
+	channelID := abilities[0].ChannelId
+	for _, ability := range abilities {
+		if ability.ChannelId > afterChannelID {
+			channelID = ability.ChannelId
+			break
+		}
+	}
+
+	var channel Channel
+	if err := DB.First(&channel, "id = ?", channelID).Error; err != nil {
+		return nil, err
+	}
+	return &channel, nil
+}
+
 // filterAbilitiesByRequestPathAndModel restricts candidates by request path and
 // model for the DB (non-memory-cache) selection path. Only Advanced Custom
 // (type 58) channels are path-checked: kept only when one of their routes matches

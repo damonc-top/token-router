@@ -359,7 +359,18 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			AutoBan: &autoBanInt,
 		}, nil
 	}
-	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
+	var channel *model.Channel
+	var selectGroup string
+	var err error
+	if retryParam.GetRetry() > 0 {
+		afterChannelID := info.GetChannelID()
+		if afterChannelID == 0 {
+			afterChannelID = common.GetContextKeyInt(c, constant.ContextKeyChannelId)
+		}
+		channel, selectGroup, err = service.CacheGetNextSatisfiedChannel(retryParam, afterChannelID)
+	} else {
+		channel, selectGroup, err = service.CacheGetRandomSatisfiedChannel(retryParam)
+	}
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
