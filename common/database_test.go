@@ -35,7 +35,7 @@ func TestSQLiteDSNAppliesRequiredPragmas(t *testing.T) {
 func TestSQLiteDSNAppendsPragmasToExistingQuery(t *testing.T) {
 	assert.Equal(
 		t,
-		"file:test.db?cache=shared&_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)",
+		"file:test.db?cache=shared&_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_txlock=immediate",
 		sqliteDSN("file:test.db?cache=shared"),
 	)
 }

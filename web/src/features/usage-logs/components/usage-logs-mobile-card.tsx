@@ -21,12 +21,6 @@ import { Database } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
-  dotColorMap,
-  textColorMap,
-  type StatusVariant,
-} from '@/components/status-badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import {
   Empty,
   EmptyDescription,
   EmptyHeader,
@@ -34,21 +28,13 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { LOG_TYPE_ENUM } from '../constants'
 import type { UsageLog } from '../data/schema'
-import { parseLogOther } from '../lib/format'
-import {
-  getLogTypeConfig,
-  isDisplayableLogType,
-  isTimingLogType,
-} from '../lib/utils'
+import { TASK_MOBILE_SUMMARY_FIELDS } from '../lib/task-mobile-layout'
 import type { LogCategory } from '../types'
-import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
-import { useUsageLogsContext } from './usage-logs-provider'
+import { CommonLogMobileCard } from './common-log-mobile-card'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]:
@@ -65,13 +51,27 @@ interface UsageLogsMobileListProps<TData> {
   logCategory: LogCategory
 }
 
-function UsageLogsMobileSkeleton() {
+function UsageLogsMobileSkeleton(props: { separate: boolean }) {
+  const { t } = useTranslation()
   return (
-    <div className='border-border/50 bg-card overflow-hidden rounded-lg border'>
+    <div
+      role='status'
+      aria-label={t('Loading')}
+      aria-busy='true'
+      className={
+        props.separate
+          ? 'min-w-0 space-y-3'
+          : 'border-border/50 bg-card overflow-hidden rounded-lg border'
+      }
+    >
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className='border-border/40 space-y-2.5 border-b p-3 last:border-b-0'
+          className={
+            props.separate
+              ? 'border-border/60 bg-card space-y-3 rounded-xl border p-3.5'
+              : 'border-border/40 space-y-2.5 border-b p-3 last:border-b-0'
+          }
         >
           <div className='flex items-center justify-between gap-3'>
             <Skeleton className='h-5 w-40 rounded-md' />
@@ -381,7 +381,6 @@ function TaskLogsCard<TData>({
 
   const taskIdCell = cells.get('task_id')
   const statusCell = cells.get('status')
-  const submitTimeCell = cells.get('submit_time')
 
   return (
     <div className='space-y-2.5'>
@@ -391,10 +390,16 @@ function TaskLogsCard<TData>({
       </div>
 
       <div className='grid grid-cols-2 gap-1.5'>
-        <SummaryField label={t('Submit Time')} cell={submitTimeCell} />
-        <SummaryField label={t('User')} cell={cells.get('user')} primaryOnly />
+        {TASK_MOBILE_SUMMARY_FIELDS.map((field) => (
+          <SummaryField
+            key={field.id}
+            label={t(field.label)}
+            cell={cells.get(field.id)}
+            primaryOnly={field.primaryOnly}
+          />
+        ))}
         <SummaryField
-          label={t('Result')}
+          label={t('Details')}
           cell={cells.get('fail_reason')}
           className='col-span-2 bg-transparent px-0 py-0'
         />
@@ -465,7 +470,7 @@ export function UsageLogsMobileList<TData>({
     t('No usage logs available. Logs will appear here once API calls are made.')
 
   if (isLoading) {
-    return <UsageLogsMobileSkeleton />
+    return <UsageLogsMobileSkeleton separate={logCategory === 'common'} />
   }
 
   const rows = table.getRowModel().rows
@@ -487,7 +492,13 @@ export function UsageLogsMobileList<TData>({
   }
 
   return (
-    <div className='border-border/50 bg-card overflow-hidden rounded-lg border'>
+    <div
+      className={cn(
+        logCategory === 'common'
+          ? 'min-w-0 space-y-3'
+          : 'border-border/50 bg-card overflow-hidden rounded-lg border'
+      )}
+    >
       {rows.map((row) => {
         const cells = new Map(
           row.getVisibleCells().map((cell) => [cell.column.id, cell])
@@ -502,11 +513,18 @@ export function UsageLogsMobileList<TData>({
           <div
             key={row.id}
             className={cn(
-              'border-border/40 border-b border-l-2 border-l-transparent p-3 transition-colors last:border-b-0',
+              logCategory === 'common'
+                ? 'border-border/60 bg-card min-w-0 rounded-xl border p-3.5'
+                : 'border-border/40 border-b border-l-2 border-l-transparent p-3 transition-colors last:border-b-0',
               tintClass
             )}
           >
-            {logCategory === 'common' && <CommonLogsCard cells={cells} />}
+            {logCategory === 'common' && (
+              <CommonLogMobileCard
+                log={row.original as UsageLog}
+                cells={cells}
+              />
+            )}
             {logCategory === 'task' && <TaskLogsCard cells={cells} />}
             {logCategory === 'drawing' && <DrawingLogsCard cells={cells} />}
           </div>

@@ -63,7 +63,7 @@ func TestGetNextSatisfiedChannelCyclesByID(t *testing.T) {
 				{afterChannelID: 910004, wantChannelID: 910007},
 				{afterChannelID: 910007, wantChannelID: 910001},
 			} {
-				channel, err := GetNextSatisfiedChannel("default", modelName, test.afterChannelID, "/v1/chat/completions")
+				channel, err := GetNextSatisfiedChannel("default", modelName, test.afterChannelID, nil)
 				require.NoError(t, err)
 				require.NotNil(t, channel)
 				assert.Equal(t, test.wantChannelID, channel.Id)
