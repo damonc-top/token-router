@@ -100,7 +100,7 @@ function Stop-ManagedProcess {
     foreach ($process in $processes) {
         $runningProcess = Get-Process -Id ([int]$process.ProcessId) -ErrorAction SilentlyContinue
         if ($null -ne $runningProcess) {
-            $runningProcess.Kill($true)
+            Stop-Process -Id $runningProcess.Id -Force -ErrorAction Stop
         }
     }
 
@@ -266,6 +266,34 @@ function Get-TunnelId {
         throw "Unable to read tunnel ID from $ConfigPath."
     }
     return $tunnelMatch.Groups[1].Value
+}
+
+function Resolve-MetricsUri {
+    param(
+        [string]$ConfiguredUri,
+        [Parameter(Mandatory = $true)][string]$ConfigPath,
+        [switch]$UseConfiguredUri
+    )
+
+    if ($UseConfiguredUri -and -not [string]::IsNullOrWhiteSpace($ConfiguredUri)) {
+        return $ConfiguredUri
+    }
+
+    $configContents = Get-Content -LiteralPath $ConfigPath -Raw
+    $metricsMatch = [regex]::Match($configContents, '(?m)^\s*metrics:\s*(\S+)\s*$')
+    if ($metricsMatch.Success) {
+        $address = $metricsMatch.Groups[1].Value.Trim()
+        if ($address -match '^https?://') {
+            return $address
+        }
+        return "http://$address/metrics"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredUri)) {
+        return $ConfiguredUri
+    }
+
+    throw "Unable to resolve cloudflared metrics URI from $ConfigPath."
 }
 
 function Test-NewApiHealth {
@@ -578,6 +606,10 @@ function Invoke-ServiceWatchCycle {
 
 $null = New-Item -ItemType Directory -Path $logDir -Force
 $tunnelConfigPath = Resolve-TunnelConfigPath -ConfiguredPath $TunnelConfig
+$MetricsUri = Resolve-MetricsUri `
+    -ConfiguredUri $MetricsUri `
+    -ConfigPath $tunnelConfigPath `
+    -UseConfiguredUri:$PSBoundParameters.ContainsKey('MetricsUri')
 
 if (-not $Once) {
     if (Test-ExistingWatchdog -PidFilePath $pidFile) {
