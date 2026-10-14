@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,7 +31,7 @@ func StartSubscriptionQuotaResetTask() {
 			return
 		}
 		gopool.Go(func() {
-			logger.LogInfo(context.Background(), fmt.Sprintf("subscription quota reset task started: tick=%s", subscriptionResetTickInterval))
+			logger.LogInfo(context.Background(), common.LogText("subscription quota reset task started: tick=%s", subscriptionResetTickInterval))
 			ticker := time.NewTicker(subscriptionResetTickInterval)
 			defer ticker.Stop()
 
@@ -61,7 +60,7 @@ func runSubscriptionQuotaResetOnce() {
 		}
 		n, err := model.ExpireDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
-			logger.LogWarn(ctx, fmt.Sprintf("subscription expire task failed: %v", err))
+			logger.LogWarn(ctx, common.LogText("subscription expire task failed: %v", err))
 			return
 		}
 		if n == 0 {
@@ -79,7 +78,7 @@ func runSubscriptionQuotaResetOnce() {
 		}
 		n, err := model.ResetDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
-			logger.LogWarn(ctx, fmt.Sprintf("subscription quota reset task failed: %v", err))
+			logger.LogWarn(ctx, common.LogText("subscription quota reset task failed: %v", err))
 			return
 		}
 		if n == 0 {
