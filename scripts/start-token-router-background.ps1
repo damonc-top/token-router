@@ -40,7 +40,7 @@ function Start-DirectProcess {
 
 if ($null -eq (Get-Process -Name new-api -ErrorAction SilentlyContinue)) {
     Start-DirectProcess `
-        -FilePath (Join-Path $workspace 'new-api.exe') `
+        -FilePath (Join-Path $workspace 'token-router.exe') `
         -ArgumentList @('--log-dir', $logDir) `
         -StandardOutputPath (Join-Path $logDir 'service-stdout.log') `
         -StandardErrorPath (Join-Path $logDir 'service-stderr.log')

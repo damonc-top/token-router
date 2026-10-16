@@ -57,3 +57,4 @@ message-log.db-wal
 one-api.db-shm
 go.work
 go.work.sum
+logs_pre_junction

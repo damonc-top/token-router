@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Vtrix">
+  <defs>
+    <linearGradient id="vt" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4f8ef7"/>
+      <stop offset="1" stop-color="#9b59f6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#1b1b2f"/>
+  <path d="M15 19 L32 47 L49 19" fill="none" stroke="url(#vt)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="49" r="3.5" fill="#e8ecf5"/>
+</svg>

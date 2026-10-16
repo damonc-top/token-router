@@ -1,6 +1,6 @@
 WEB_DIR = ./web
 API_DIR = .
-BIN ?= new-api
+BIN ?= token-router
 VERSION ?= $(shell cat VERSION 2>/dev/null)
 DEV_WEB_PORT ?= 5173
 DEV_COMPOSE_FILE = docker-compose.dev.yml
@@ -33,7 +33,7 @@ build-api:
 		exit 1; \
 	fi
 	@echo "Building Go binary -> ./$(BIN)"
-	@go build -o $(BIN) .
+	@go build -ldflags "-X 'github.com/QuantumNous/new-api/common.Version=$(VERSION)'" -o $(BIN) .
 
 build: build-web build-api
 	@echo "OK: ./$(BIN)"

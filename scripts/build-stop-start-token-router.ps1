@@ -1,11 +1,29 @@
 [CmdletBinding()]
 param(
-    [string]$Workspace = (Split-Path -Parent $PSScriptRoot),
+    [string]$Workspace = '',
     [switch]$UseEnvironmentProxy
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Resolve the workspace inside the body: Windows PowerShell 5.1 leaves
+# $PSScriptRoot empty while evaluating parameter defaults under -File, so a
+# param default cannot see it. $MyInvocation covers the remaining invocations
+# that leave it empty, such as piping the script into the interpreter.
+if ([string]::IsNullOrWhiteSpace($Workspace)) {
+    $scriptDir = $PSScriptRoot
+    if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+        $command = $MyInvocation.MyCommand
+        if ($null -ne $command -and $command.CommandType -eq 'ExternalScript') {
+            $scriptDir = Split-Path -Parent $command.Path
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($scriptDir)) {
+        throw 'Unable to resolve the script directory; pass -Workspace explicitly.'
+    }
+    $Workspace = Split-Path -Parent $scriptDir
+}
 
 function Invoke-ExternalCommand {
     param(
@@ -174,14 +192,14 @@ $workspace = (Resolve-Path -LiteralPath $Workspace).Path
 $webDir = Join-Path $workspace 'web'
 $logDir = Join-Path $workspace 'logs'
 $backupDir = Join-Path $logDir 'deploy-backups'
-$apiPath = Join-Path $workspace 'new-api.exe'
+$apiPath = Join-Path $workspace 'token-router.exe'
 $cloudflaredPath = Join-Path $workspace 'bin\cloudflared.exe'
 $tunnelConfig = Join-Path $env:USERPROFILE '.cloudflared\config.yml'
 $metricsUri = 'http://127.0.0.1:20241/metrics'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$stagedApiPath = Join-Path $workspace "new-api-$stamp.next.exe"
-$backupApiPath = Join-Path $backupDir "new-api-$stamp.exe"
-$failedApiPath = Join-Path $backupDir "new-api-$stamp.failed.exe"
+$stagedApiPath = Join-Path $workspace "token-router-$stamp.next.exe"
+$backupApiPath = Join-Path $backupDir "token-router-$stamp.exe"
+$failedApiPath = Join-Path $backupDir "token-router-$stamp.failed.exe"
 
 foreach ($path in @($webDir, $cloudflaredPath, $tunnelConfig)) {
     if (-not (Test-Path -LiteralPath $path)) {
@@ -301,4 +319,4 @@ $tunnelProcess = Start-ManagedProcess `
     -Environment $processEnvironment
 Wait-ForTunnelConnection -MetricsUri $metricsUri -TimeoutSeconds 60
 
-Write-Host "Deployment complete. new-api PID=$($apiProcess.Id), cloudflared PID=$($tunnelProcess.Id)."
+Write-Host "Deployment complete. token-router PID=$($apiProcess.Id), cloudflared PID=$($tunnelProcess.Id)."

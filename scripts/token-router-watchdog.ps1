@@ -11,6 +11,7 @@ param(
     [int]$StartupWaitSeconds = 60,
     [int]$RestartWaitSeconds = 60,
     [int]$RestartCooldownSeconds = 120,
+    [string]$LogDir = '',
     [switch]$Once
 )
 
@@ -29,8 +30,8 @@ if ([string]::IsNullOrWhiteSpace($Workspace)) {
 }
 
 $workspace = (Resolve-Path -LiteralPath $Workspace).Path
-$logDir = Join-Path $workspace 'logs'
-$apiPath = Join-Path $workspace 'new-api.exe'
+$logDir = if ([string]::IsNullOrWhiteSpace($LogDir)) { Join-Path $workspace 'logs' } else { (Resolve-Path -LiteralPath $LogDir).Path }
+$apiPath = Join-Path $workspace 'token-router.exe'
 $cloudflaredPath = Join-Path $workspace 'bin\cloudflared.exe'
 $pidFile = Join-Path $logDir 'token-router-watchdog.pid'
 $watchdogLog = Join-Path $logDir 'token-router-watchdog.log'
@@ -307,7 +308,7 @@ function Test-NewApiHealth {
     if ($processes.Count -eq 0) {
         return [pscustomobject]@{
             Healthy = $false
-            Reason  = 'new-api process not running'
+            Reason  = 'token-router process not running'
             Detail  = 'process_missing'
         }
     }
@@ -434,8 +435,8 @@ function Start-NewApiProcess {
     )
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $stdoutPath = Join-Path $LogDirectory "new-api-watchdog-$stamp-stdout.log"
-    $stderrPath = Join-Path $LogDirectory "new-api-watchdog-$stamp-stderr.log"
+    $stdoutPath = Join-Path $LogDirectory "token-router-watchdog-$stamp-stdout.log"
+    $stderrPath = Join-Path $LogDirectory "token-router-watchdog-$stamp-stderr.log"
     return Start-ManagedProcess `
         -FilePath $FilePath `
         -Arguments @('--log-dir', $LogDirectory) `
@@ -475,13 +476,13 @@ function Restart-NewApi {
         [Parameter(Mandatory = $true)][int]$WaitSeconds
     )
 
-    Write-WatchdogLog -Level 'WARN' -Message 'Restarting new-api'
+    Write-WatchdogLog -Level 'WARN' -Message 'Restarting token-router'
     Stop-ManagedProcess -FilePath $FilePath
     $process = Start-NewApiProcess -FilePath $FilePath -WorkingDirectory $WorkingDirectory -LogDirectory $LogDirectory
-    $health = Wait-ForCondition -TimeoutSeconds $WaitSeconds -Description 'new-api readiness' -Checker {
+    $health = Wait-ForCondition -TimeoutSeconds $WaitSeconds -Description 'token-router readiness' -Checker {
         Test-NewApiHealth -FilePath $FilePath -StatusUri $StatusUri -TimeoutSeconds 3
     }
-    Write-WatchdogLog -Message "new-api restart complete. PID=$($process.Id); $($health.Reason)"
+    Write-WatchdogLog -Message "token-router restart complete. PID=$($process.Id); $($health.Reason)"
     return $process
 }
 
@@ -632,18 +633,18 @@ try {
     if (-not $Once) {
         $apiHealth = Test-NewApiHealth -FilePath $apiPath -StatusUri $ApiStatusUri -TimeoutSeconds $CheckTimeoutSeconds
         if (-not $apiHealth.Healthy) {
-            Write-WatchdogLog -Level 'WARN' -Message "Boot ensure new-api: $($apiHealth.Reason)"
+            Write-WatchdogLog -Level 'WARN' -Message "Boot ensure token-router: $($apiHealth.Reason)"
             if ($apiHealth.Detail -eq 'process_missing') {
                 $null = Start-NewApiProcess -FilePath $apiPath -WorkingDirectory $workspace -LogDirectory $logDir
             } else {
                 $null = Restart-NewApi -FilePath $apiPath -WorkingDirectory $workspace -LogDirectory $logDir -StatusUri $ApiStatusUri -WaitSeconds $StartupWaitSeconds
             }
-            $null = Wait-ForCondition -TimeoutSeconds $StartupWaitSeconds -Description 'new-api readiness' -Checker {
+            $null = Wait-ForCondition -TimeoutSeconds $StartupWaitSeconds -Description 'token-router readiness' -Checker {
                 Test-NewApiHealth -FilePath $apiPath -StatusUri $ApiStatusUri -TimeoutSeconds 3
             }
-            Write-WatchdogLog -Message 'Boot ensure new-api ready.'
+            Write-WatchdogLog -Message 'Boot ensure token-router ready.'
         } else {
-            Write-WatchdogLog -Message "Boot new-api already healthy. $($apiHealth.Reason)"
+            Write-WatchdogLog -Message "Boot token-router already healthy. $($apiHealth.Reason)"
         }
 
         $tunnelHealth = Test-CloudflaredHealth -FilePath $cloudflaredPath -MetricsUri $MetricsUri -TimeoutSeconds $CheckTimeoutSeconds
@@ -675,7 +676,7 @@ try {
     $powerPolicyApplied = $false
 
     while ($true) {
-        $apiOk = Invoke-ServiceWatchCycle -Name 'new-api' -State $apiState `
+        $apiOk = Invoke-ServiceWatchCycle -Name 'token-router' -State $apiState `
             -HealthChecker {
                 Test-NewApiHealth -FilePath $apiPath -StatusUri $ApiStatusUri -TimeoutSeconds $CheckTimeoutSeconds
             } `
@@ -701,14 +702,14 @@ try {
             if (-not $sleepPreventionHeld) {
                 if (Set-SleepPrevention -Prevent $true) {
                     $sleepPreventionHeld = $true
-                    Write-WatchdogLog -Message 'Sleep prevention enabled while new-api or cloudflared is running.'
+                    Write-WatchdogLog -Message 'Sleep prevention enabled while token-router or cloudflared is running.'
                 } else {
                     Write-WatchdogLog -Level 'WARN' -Message 'Failed to enable sleep prevention.'
                 }
             }
         } elseif ($sleepPreventionHeld) {
             if (Set-SleepPrevention -Prevent $false) {
-                Write-WatchdogLog -Message 'Sleep prevention released; new-api and cloudflared are not running.'
+                Write-WatchdogLog -Message 'Sleep prevention released; token-router and cloudflared are not running.'
             }
             $sleepPreventionHeld = $false
         }
