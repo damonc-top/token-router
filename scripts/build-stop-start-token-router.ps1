@@ -143,31 +143,37 @@ function Wait-ForHttpStatus {
 
 function Wait-ForTunnelConnection {
     param(
-        [Parameter(Mandatory = $true)][string]$MetricsUri,
+        [Parameter(Mandatory = $true)][int[]]$MetricsPorts,
         [Parameter(Mandatory = $true)][int]$TimeoutSeconds
     )
 
+    # cloudflared picks the first free metrics port from its configured
+    # address; a socket still lingering from the stopped instance bumps the
+    # bind to the next port, so probe a range instead of one fixed port.
+    $uris = @($MetricsPorts | ForEach-Object { "http://127.0.0.1:$_/metrics" })
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastError = "no metrics response"
     while ((Get-Date) -lt $deadline) {
-        try {
-            $response = Invoke-WebRequest -Uri $MetricsUri -NoProxy -UseBasicParsing -TimeoutSec 3
-            $connectionMatches = [regex]::Matches(
-                $response.Content,
-                '(?m)^cloudflared_tunnel_ha_connections(?:\{[^}]*\})?\s+([0-9]+(?:\.[0-9]+)?)'
-            )
-            foreach ($connectionMatch in $connectionMatches) {
-                if ([double]$connectionMatch.Groups[1].Value -gt 0) {
-                    return
+        foreach ($uri in $uris) {
+            try {
+                $response = Invoke-WebRequest -Uri $uri -NoProxy -UseBasicParsing -TimeoutSec 3
+                $connectionMatches = [regex]::Matches(
+                    $response.Content,
+                    '(?m)^cloudflared_tunnel_ha_connections(?:\{[^}]*\})?\s+([0-9]+(?:\.[0-9]+)?)'
+                )
+                foreach ($connectionMatch in $connectionMatches) {
+                    if ([double]$connectionMatch.Groups[1].Value -gt 0) {
+                        return
+                    }
                 }
+                $lastError = "cloudflared_tunnel_ha_connections is zero at $uri"
+            } catch {
+                $lastError = $_.Exception.Message
             }
-            $lastError = "cloudflared_tunnel_ha_connections is zero"
-        } catch {
-            $lastError = $_.Exception.Message
         }
         Start-Sleep -Milliseconds 500
     }
-    throw "Timed out waiting for an active Cloudflare Tunnel connection at ${MetricsUri}: $lastError"
+    throw "Timed out waiting for an active Cloudflare Tunnel connection; tried metrics at $($uris -join ', '): $lastError"
 }
 
 function Resolve-BunPath {
@@ -195,7 +201,7 @@ $backupDir = Join-Path $logDir 'deploy-backups'
 $apiPath = Join-Path $workspace 'token-router.exe'
 $cloudflaredPath = Join-Path $workspace 'bin\cloudflared.exe'
 $tunnelConfig = Join-Path $env:USERPROFILE '.cloudflared\config.yml'
-$metricsUri = 'http://127.0.0.1:20241/metrics'
+$metricsPorts = 20241..20245
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $stagedApiPath = Join-Path $workspace "token-router-$stamp.next.exe"
 $backupApiPath = Join-Path $backupDir "token-router-$stamp.exe"
@@ -317,6 +323,6 @@ $tunnelProcess = Start-ManagedProcess `
     -StandardOutputPath $tunnelStdout `
     -StandardErrorPath $tunnelStderr `
     -Environment $processEnvironment
-Wait-ForTunnelConnection -MetricsUri $metricsUri -TimeoutSeconds 60
+Wait-ForTunnelConnection -MetricsPorts $metricsPorts -TimeoutSeconds 60
 
 Write-Host "Deployment complete. token-router PID=$($apiProcess.Id), cloudflared PID=$($tunnelProcess.Id)."
