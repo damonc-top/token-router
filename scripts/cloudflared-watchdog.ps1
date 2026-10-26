@@ -1,26 +1,25 @@
 [CmdletBinding()]
 param(
     [string]$Workspace = '',
-    [string]$MetricsUri = 'http://127.0.0.1:20241/metrics',
-    [int]$HealthyIntervalSeconds = 60,
-    [int]$UnhealthyIntervalSeconds = 15,
-    [int]$FailureThreshold = 4,
-    [int]$CheckTimeoutSeconds = 5,
-    [int]$RestartWaitSeconds = 60,
-    [int]$RestartCooldownSeconds = 120,
-    [switch]$Once
+    [string]$TunnelConfig = ''
 )
 
-$script = Join-Path $PSScriptRoot 'token-router-watchdog.ps1'
-$forward = @{
-    Workspace                = $Workspace
-    MetricsUri               = $MetricsUri
-    HealthyIntervalSeconds   = $HealthyIntervalSeconds
-    UnhealthyIntervalSeconds = $UnhealthyIntervalSeconds
-    FailureThreshold         = $FailureThreshold
-    CheckTimeoutSeconds      = $CheckTimeoutSeconds
-    RestartWaitSeconds       = $RestartWaitSeconds
-    RestartCooldownSeconds   = $RestartCooldownSeconds
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($Workspace)) {
+    throw 'Unable to resolve script directory; pass -Workspace explicitly.'
 }
-if ($Once) { $forward.Once = $true }
-& $script @forward
+
+$workspace = (Resolve-Path -LiteralPath $Workspace).Path
+$watchdogScript = Join-Path $workspace 'scripts\token-router-watchdog.ps1'
+if (-not (Test-Path -LiteralPath $watchdogScript)) {
+    throw "Watchdog script not found: $watchdogScript"
+}
+
+$arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $watchdogScript)
+if (-not [string]::IsNullOrWhiteSpace($TunnelConfig)) {
+    $arguments += @('-TunnelConfig', $TunnelConfig)
+}
+
+& 'powershell.exe' @arguments

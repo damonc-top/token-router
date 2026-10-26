@@ -437,13 +437,17 @@ function Start-NewApiProcess {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $stdoutPath = Join-Path $LogDirectory "token-router-watchdog-$stamp-stdout.log"
     $stderrPath = Join-Path $LogDirectory "token-router-watchdog-$stamp-stderr.log"
-    return Start-ManagedProcess `
+    $process = Start-ManagedProcess `
         -FilePath $FilePath `
         -Arguments @('--log-dir', $LogDirectory) `
         -WorkingDirectory $WorkingDirectory `
         -StandardOutputPath $stdoutPath `
         -StandardErrorPath $stderrPath `
         -Environment (Get-DirectNoProxyEnvironment)
+    if ($null -ne $process) {
+        return $process
+    }
+    throw "token-router did not start: $FilePath"
 }
 
 function Start-CloudflaredProcess {
@@ -458,13 +462,17 @@ function Start-CloudflaredProcess {
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $stdoutPath = Join-Path $LogDirectory "cloudflared-watchdog-$stamp-stdout.log"
     $stderrPath = Join-Path $LogDirectory "cloudflared-watchdog-$stamp-stderr.log"
-    return Start-ManagedProcess `
+    $process = Start-ManagedProcess `
         -FilePath $FilePath `
         -Arguments @('--config', $ConfigPath, '--protocol', 'http2', 'tunnel', 'run', $tunnelId) `
         -WorkingDirectory $WorkingDirectory `
         -StandardOutputPath $stdoutPath `
         -StandardErrorPath $stderrPath `
         -Environment (Get-DirectNoProxyEnvironment)
+    if ($null -ne $process) {
+        return $process
+    }
+    throw "cloudflared did not start: $FilePath"
 }
 
 function Restart-NewApi {
