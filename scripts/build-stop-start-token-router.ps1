@@ -221,12 +221,15 @@ $hadVersion = Test-Path Env:VITE_REACT_APP_VERSION
 $previousVersion = $env:VITE_REACT_APP_VERSION
 $hadDisableEslint = Test-Path Env:DISABLE_ESLINT_PLUGIN
 $previousDisableEslint = $env:DISABLE_ESLINT_PLUGIN
-if (Test-Path -LiteralPath (Join-Path $workspace 'VERSION')) {
-    $version = Get-Content -LiteralPath (Join-Path $workspace 'VERSION') -Raw
-    if ($null -ne $version) {
-        $env:VITE_REACT_APP_VERSION = $version.Trim()
+$versionPath = Join-Path $workspace 'VERSION'
+$version = 'v0.0.0'
+if (Test-Path -LiteralPath $versionPath) {
+    $versionContents = Get-Content -LiteralPath $versionPath -Raw
+    if (-not [string]::IsNullOrWhiteSpace($versionContents)) {
+        $version = $versionContents.Trim()
     }
 }
+$env:VITE_REACT_APP_VERSION = $version
 $env:DISABLE_ESLINT_PLUGIN = 'true'
 try {
     Invoke-ExternalCommand -FilePath $bunPath -Arguments @('install', '--frozen-lockfile') -Description 'Frontend dependency validation' -WorkingDirectory $webDir
@@ -244,7 +247,12 @@ try {
     }
 }
 
-Invoke-ExternalCommand -FilePath $goPath -Arguments @('build', '-o', $stagedApiPath, '.') -Description 'Backend build' -WorkingDirectory $workspace
+Invoke-ExternalCommand -FilePath $goPath -Arguments @(
+    'build',
+    '-ldflags', "-X github.com/QuantumNous/new-api/common.Version=$version",
+    '-o', $stagedApiPath,
+    '.'
+) -Description 'Backend build' -WorkingDirectory $workspace
 if (-not (Test-Path -LiteralPath $stagedApiPath)) {
     throw "Backend build did not produce $stagedApiPath."
 }

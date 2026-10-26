@@ -2,7 +2,6 @@ package channel
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
