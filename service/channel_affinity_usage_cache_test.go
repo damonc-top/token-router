@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -11,10 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var channelAffinityTestSeq atomic.Int64
+
 func buildChannelAffinityStatsContextForTest(t *testing.T) (*gin.Context, string, string, string) {
 	t.Helper()
 
-	testID := strings.ReplaceAll(t.Name(), "/", "_")
+	testID := fmt.Sprintf("%s:%d", strings.ReplaceAll(t.Name(), "/", "_"), channelAffinityTestSeq.Add(1))
 	ruleName := "rule_" + testID
 	usingGroup := "default"
 	keyFP := "fp_" + testID
