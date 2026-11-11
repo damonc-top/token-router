@@ -50,11 +50,18 @@ if ([string]::IsNullOrWhiteSpace($TunnelConfig)) {
     $TunnelConfig = (Resolve-Path -LiteralPath $TunnelConfig).Path
 }
 
-# Long-running task process (not a detaching launcher), so RestartCount works.
-$arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$watchdogScript`" -Workspace `"$workspace`" -TunnelConfig `"$TunnelConfig`""
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments -WorkingDirectory $workspace
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$trigger.Delay = 'PT15S'
+# Keep the long-running task supervised by both the boot trigger and a
+# one-minute repetition trigger. IgnoreNew prevents overlapping instances.
+$powerShellPath = if ($PSVersionTable.PSVersion.Major -ge 7) {
+    Join-Path $PSHOME 'pwsh.exe'
+} else {
+    (Get-Command pwsh.exe, powershell.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+}
+$arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$watchdogScript`" -Workspace `"$workspace`" -TunnelConfig `"$TunnelConfig`" -HealthyIntervalSeconds 10 -SkipSleepManagement"
+$action = New-ScheduledTaskAction -Execute $powerShellPath -Argument $arguments -WorkingDirectory $workspace
+$startupTrigger = New-ScheduledTaskTrigger -AtStartup
+$startupTrigger.Delay = 'PT15S'
+$supervisorTrigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1)
 $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -WakeToRun -DisallowDemandStart:$false
 $settings.DisallowStartIfOnBatteries = $false
@@ -62,7 +69,7 @@ $settings.StopIfGoingOnBatteries = $false
 $settings.IdleSettings.StopOnIdleEnd = $false
 $settings.IdleSettings.RestartOnIdle = $false
 
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($startupTrigger, $supervisorTrigger) -Principal $principal -Settings $settings -Force | Out-Null
 Write-Host "Scheduled task installed: $TaskName (long-running watchdog)"
 
 if (-not $LeaveLegacyTasksEnabled) {

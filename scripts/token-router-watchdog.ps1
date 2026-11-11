@@ -12,6 +12,7 @@ param(
     [int]$RestartWaitSeconds = 60,
     [int]$RestartCooldownSeconds = 120,
     [string]$LogDir = '',
+    [switch]$SkipSleepManagement,
     [switch]$Once
 )
 
@@ -67,29 +68,31 @@ function Write-WatchdogLog {
     )
 
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message
-    Add-Content -LiteralPath $watchdogLog -Value $line -Encoding UTF8
-    Write-Host $line
+    try {
+        Add-Content -LiteralPath $watchdogLog -Value $line -Encoding UTF8
+    } catch {
+        try {
+            [Console]::Error.WriteLine($line)
+        } catch {
+        }
+    }
 }
 
 function Get-ManagedProcesses {
     param([Parameter(Mandatory = $true)][string]$FilePath)
 
     $resolvedPath = [System.IO.Path]::GetFullPath($FilePath)
-    $name = [System.IO.Path]::GetFileName($resolvedPath).Replace("'", "''")
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($resolvedPath)
     return @(
-        Get-CimInstance -ClassName Win32_Process -Filter "Name='$name'" |
-            Where-Object {
-                if (-not [string]::IsNullOrWhiteSpace($_.ExecutablePath)) {
-                    return [string]::Equals(
-                        [System.IO.Path]::GetFullPath($_.ExecutablePath),
-                        $resolvedPath,
-                        [System.StringComparison]::OrdinalIgnoreCase
-                    )
+        Get-Process -Name $name -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $processPath = $_.Path
+                if ([string]::IsNullOrWhiteSpace($processPath)) {
+                    throw "Unable to verify executable path for process $($_.Id)."
                 }
-                if (-not [string]::IsNullOrWhiteSpace($_.CommandLine)) {
-                    return $_.CommandLine.IndexOf($resolvedPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+                if ([string]::Equals([IO.Path]::GetFullPath($processPath), $resolvedPath, [StringComparison]::OrdinalIgnoreCase)) {
+                    [pscustomobject]@{ ProcessId = $_.Id; ExecutablePath = $processPath }
                 }
-                return $true
             }
     )
 }
@@ -526,18 +529,44 @@ function Test-ExistingWatchdog {
         return $false
     }
 
-    $existingPidText = (Get-Content -LiteralPath $PidFilePath -Raw).Trim()
+    $existingPidText = Get-Content -LiteralPath $PidFilePath -Raw -ErrorAction SilentlyContinue
     $existingPid = 0
     if (-not [int]::TryParse($existingPidText, [ref]$existingPid)) {
         return $false
     }
 
-    $existing = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
-    if ($null -eq $existing) {
+    if ($null -eq (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
         return $false
     }
-
-    return $existing.Id -ne $PID
+    $existing = Get-CimInstance Win32_Process -Filter "ProcessId=$existingPid" -OperationTimeoutSec 5 -ErrorAction Stop
+    if ($null -eq $existing -or $existing.Name -notin @('powershell.exe', 'pwsh.exe') -or
+        [string]::IsNullOrWhiteSpace($existing.CommandLine) -or $existing.ProcessId -eq $PID) {
+        return $false
+    }
+    $scriptPath = Join-Path $workspace 'scripts\token-router-watchdog.ps1'
+    $tokens = @([regex]::Matches($existing.CommandLine, '"(?:\\.|[^"\\])*"|\S+') | ForEach-Object { $_.Value.Trim('"') })
+    for ($i = 1; $i -lt $tokens.Count; $i++) {
+        $argument = $tokens[$i]
+        if ('-Command'.StartsWith($argument, [StringComparison]::OrdinalIgnoreCase) -or
+            '-CommandWithArgs'.StartsWith($argument, [StringComparison]::OrdinalIgnoreCase) -or
+            '-EncodedCommand'.StartsWith($argument, [StringComparison]::OrdinalIgnoreCase)) {
+            return $false
+        }
+        if ($argument -ieq '-File' -or $argument -ieq '-f') {
+            if ($i + 1 -ge $tokens.Count -or -not [IO.Path]::IsPathRooted($tokens[$i + 1]) -or
+                -not [string]::Equals([IO.Path]::GetFullPath($tokens[$i + 1]), $scriptPath, [StringComparison]::OrdinalIgnoreCase)) {
+                return $false
+            }
+            for ($j = $i + 2; $j -lt $tokens.Count; $j++) {
+                if ($tokens[$j] -ieq '-Workspace') {
+                    return $j + 1 -lt $tokens.Count -and
+                        [string]::Equals([IO.Path]::GetFullPath($tokens[$j + 1]), $workspace, [StringComparison]::OrdinalIgnoreCase)
+                }
+            }
+            return $true
+        }
+    }
+    return $false
 }
 
 function Invoke-ServiceWatchCycle {
@@ -548,7 +577,15 @@ function Invoke-ServiceWatchCycle {
         [Parameter(Mandatory = $true)][hashtable]$State
     )
 
-    $health = & $HealthChecker
+    try {
+        $health = & $HealthChecker
+    } catch {
+        $health = [pscustomobject]@{
+            Healthy = $false
+            Reason  = "health check failed: $($_.Exception.Message)"
+            Detail  = 'health_check_failed'
+        }
+    }
     if ($health.Healthy) {
         if ($State.Failures -gt 0) {
             Write-WatchdogLog -Message "$Name recovered after $($State.Failures) failure(s). $($health.Reason)"
@@ -614,21 +651,22 @@ function Invoke-ServiceWatchCycle {
 }
 
 $null = New-Item -ItemType Directory -Path $logDir -Force
-$tunnelConfigPath = Resolve-TunnelConfigPath -ConfiguredPath $TunnelConfig
-$MetricsUri = Resolve-MetricsUri `
-    -ConfiguredUri $MetricsUri `
-    -ConfigPath $tunnelConfigPath `
-    -UseConfiguredUri:$PSBoundParameters.ContainsKey('MetricsUri')
-
-if (-not $Once) {
-    if (Test-ExistingWatchdog -PidFilePath $pidFile) {
-        $existingPid = (Get-Content -LiteralPath $pidFile -Raw).Trim()
-        throw "Another token-router watchdog is already running (PID $existingPid)."
-    }
-    Set-Content -LiteralPath $pidFile -Value $PID -Encoding ascii
-}
 
 try {
+    $tunnelConfigPath = Resolve-TunnelConfigPath -ConfiguredPath $TunnelConfig
+    $MetricsUri = Resolve-MetricsUri `
+        -ConfiguredUri $MetricsUri `
+        -ConfigPath $tunnelConfigPath `
+        -UseConfiguredUri:$PSBoundParameters.ContainsKey('MetricsUri')
+
+    if (-not $Once) {
+        if (Test-ExistingWatchdog -PidFilePath $pidFile) {
+            $existingPid = (Get-Content -LiteralPath $pidFile -Raw).Trim()
+            throw "Another token-router watchdog is already running (PID $existingPid)."
+        }
+        Set-Content -LiteralPath $pidFile -Value $PID -Encoding ascii
+    }
+
     foreach ($path in @($apiPath, $cloudflaredPath, $tunnelConfigPath)) {
         if (-not (Test-Path -LiteralPath $path)) {
             throw "Required path does not exist: $path"
@@ -684,49 +722,58 @@ try {
     $powerPolicyApplied = $false
 
     while ($true) {
-        $apiOk = Invoke-ServiceWatchCycle -Name 'token-router' -State $apiState `
-            -HealthChecker {
-                Test-NewApiHealth -FilePath $apiPath -StatusUri $ApiStatusUri -TimeoutSeconds $CheckTimeoutSeconds
-            } `
-            -Restarter {
-                Restart-NewApi -FilePath $apiPath -WorkingDirectory $workspace -LogDirectory $logDir -StatusUri $ApiStatusUri -WaitSeconds $RestartWaitSeconds
-            }
-
-        $tunnelOk = Invoke-ServiceWatchCycle -Name 'cloudflared' -State $tunnelState `
-            -HealthChecker {
-                Test-CloudflaredHealth -FilePath $cloudflaredPath -MetricsUri $MetricsUri -TimeoutSeconds $CheckTimeoutSeconds
-            } `
-            -Restarter {
-                Restart-Cloudflared -FilePath $cloudflaredPath -ConfigPath $tunnelConfigPath -WorkingDirectory $workspace -LogDirectory $logDir -MetricsUri $MetricsUri -WaitSeconds $RestartWaitSeconds
-            }
-
-        $serviceRunning = (@(Get-ManagedProcesses -FilePath $apiPath).Count -gt 0) -or (@(Get-ManagedProcesses -FilePath $cloudflaredPath).Count -gt 0)
-        if ($serviceRunning) {
-            if (-not $powerPolicyApplied) {
-                Enable-AlwaysOnPowerPolicy
-                $powerPolicyApplied = $true
-                Write-WatchdogLog -Message 'Applied always-on power policy: sleep/hibernate/lid sleep disabled.'
-            }
-            if (-not $sleepPreventionHeld) {
-                if (Set-SleepPrevention -Prevent $true) {
-                    $sleepPreventionHeld = $true
-                    Write-WatchdogLog -Message 'Sleep prevention enabled while token-router or cloudflared is running.'
-                } else {
-                    Write-WatchdogLog -Level 'WARN' -Message 'Failed to enable sleep prevention.'
+        try {
+            $apiOk = Invoke-ServiceWatchCycle -Name 'token-router' -State $apiState `
+                -HealthChecker {
+                    Test-NewApiHealth -FilePath $apiPath -StatusUri $ApiStatusUri -TimeoutSeconds $CheckTimeoutSeconds
+                } `
+                -Restarter {
+                    Restart-NewApi -FilePath $apiPath -WorkingDirectory $workspace -LogDirectory $logDir -StatusUri $ApiStatusUri -WaitSeconds $RestartWaitSeconds
                 }
-            }
-        } elseif ($sleepPreventionHeld) {
-            if (Set-SleepPrevention -Prevent $false) {
-                Write-WatchdogLog -Message 'Sleep prevention released; token-router and cloudflared are not running.'
-            }
-            $sleepPreventionHeld = $false
-        }
 
-        if ($Once) {
-            if (-not ($apiOk -and $tunnelOk)) {
-                exit 1
+            $tunnelOk = Invoke-ServiceWatchCycle -Name 'cloudflared' -State $tunnelState `
+                -HealthChecker {
+                    Test-CloudflaredHealth -FilePath $cloudflaredPath -MetricsUri $MetricsUri -TimeoutSeconds $CheckTimeoutSeconds
+                } `
+                -Restarter {
+                    Restart-Cloudflared -FilePath $cloudflaredPath -ConfigPath $tunnelConfigPath -WorkingDirectory $workspace -LogDirectory $logDir -MetricsUri $MetricsUri -WaitSeconds $RestartWaitSeconds
+                }
+
+            $serviceRunning = -not $SkipSleepManagement -and ((@(Get-ManagedProcesses -FilePath $apiPath).Count -gt 0) -or (@(Get-ManagedProcesses -FilePath $cloudflaredPath).Count -gt 0))
+            if ($serviceRunning) {
+                if (-not $powerPolicyApplied) {
+                    Enable-AlwaysOnPowerPolicy
+                    $powerPolicyApplied = $true
+                    Write-WatchdogLog -Message 'Applied always-on power policy: sleep/hibernate/lid sleep disabled.'
+                }
+                if (-not $sleepPreventionHeld) {
+                    if (Set-SleepPrevention -Prevent $true) {
+                        $sleepPreventionHeld = $true
+                        Write-WatchdogLog -Message 'Sleep prevention enabled while token-router or cloudflared is running.'
+                    } else {
+                        Write-WatchdogLog -Level 'WARN' -Message 'Failed to enable sleep prevention.'
+                    }
+                }
+            } elseif ($sleepPreventionHeld) {
+                if (Set-SleepPrevention -Prevent $false) {
+                    Write-WatchdogLog -Message 'Sleep prevention released; token-router and cloudflared are not running.'
+                }
+                $sleepPreventionHeld = $false
             }
-            break
+
+            if ($Once) {
+                if (-not ($apiOk -and $tunnelOk)) {
+                    exit 1
+                }
+                break
+            }
+        } catch {
+            Write-WatchdogLog -Level 'ERROR' -Message "Watch cycle failed: $($_.Exception.Message)"
+            if ($Once) {
+                throw
+            }
+            Start-Sleep -Seconds $UnhealthyIntervalSeconds
+            continue
         }
 
         if ($apiOk -and $tunnelOk) {
@@ -741,9 +788,11 @@ try {
     Write-WatchdogLog -Level 'ERROR' -Message "Watchdog fatal: $($_.Exception.Message)"
     throw
 } finally {
-    try {
-        $null = Set-SleepPrevention -Prevent $false
-    } catch {
+    if (-not $SkipSleepManagement) {
+        try {
+            $null = Set-SleepPrevention -Prevent $false
+        } catch {
+        }
     }
     if (-not $Once -and (Test-Path -LiteralPath $pidFile)) {
         $currentPidText = (Get-Content -LiteralPath $pidFile -Raw -ErrorAction SilentlyContinue)

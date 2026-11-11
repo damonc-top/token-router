@@ -82,6 +82,7 @@ interface RuleFormValues {
   user_agent_include_text: string
   value_regex: string
   ttl_seconds: number
+  prefer_idle_channel: boolean
   skip_retry_on_failure: boolean
   include_using_group: boolean
   include_model_name: boolean
@@ -133,6 +134,7 @@ export function RuleEditorDialog(props: Props) {
       user_agent_include_text: '',
       value_regex: '',
       ttl_seconds: 0,
+      prefer_idle_channel: true,
       skip_retry_on_failure: false,
       include_using_group: true,
       include_model_name: false,
@@ -154,6 +156,7 @@ export function RuleEditorDialog(props: Props) {
       user_agent_include_text: (r.user_agent_include || []).join('\n'),
       value_regex: r.value_regex || '',
       ttl_seconds: r.ttl_seconds || 0,
+      prefer_idle_channel: !!r.prefer_idle_channel,
       skip_retry_on_failure: !!r.skip_retry_on_failure,
       include_using_group: r.include_using_group ?? true,
       include_model_name: !!r.include_model_name,
@@ -187,6 +190,7 @@ export function RuleEditorDialog(props: Props) {
         user_agent_include_text: '',
         value_regex: '',
         ttl_seconds: 0,
+        prefer_idle_channel: true,
         skip_retry_on_failure: false,
         include_using_group: true,
         include_model_name: false,
@@ -243,6 +247,7 @@ export function RuleEditorDialog(props: Props) {
       key_sources: validKeySources,
       value_regex: values.value_regex.trim(),
       ttl_seconds: Number(values.ttl_seconds || 0),
+      prefer_idle_channel: values.prefer_idle_channel,
       skip_retry_on_failure: values.skip_retry_on_failure,
       include_using_group: values.include_using_group,
       include_model_name: values.include_model_name,
@@ -342,6 +347,19 @@ export function RuleEditorDialog(props: Props) {
             })}
           </p>
         </div>
+
+        <SettingsSwitchField
+          controlId='rule-prefer-idle-channel'
+          checked={form.watch('prefer_idle_channel')}
+          onCheckedChange={(value) =>
+            form.setValue('prefer_idle_channel', value)
+          }
+          label={t('Prefer idle channels for new sessions')}
+          description={t(
+            'New sessions prefer channels without active session bindings. When all channels are occupied, channel weights apply.'
+          )}
+          className='py-0'
+        />
 
         <Separator />
 

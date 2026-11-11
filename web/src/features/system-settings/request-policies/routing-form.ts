@@ -3,6 +3,8 @@ import { z } from 'zod'
 
 import { parseHttpStatusCodeRules } from '@/lib/http-status-code-rules'
 
+import { defaultRequestPolicySettings } from './defaults'
+
 export function createRoutingPolicySchema(t: TFunction) {
   return z.object({
     RetryTimes: z.number().int().min(0).max(99),
@@ -59,7 +61,10 @@ export function routingPolicyFormValues(
         options['channel_affinity_setting.keep_on_channel_disabled'] === 'true',
       max_entries: Number(options['channel_affinity_setting.max_entries']),
       default_ttl_seconds: Number(
-        options['channel_affinity_setting.default_ttl_seconds']
+        options['channel_affinity_setting.default_ttl_seconds'] ??
+          defaultRequestPolicySettings[
+            'channel_affinity_setting.default_ttl_seconds'
+          ]
       ),
       rules: options['channel_affinity_setting.rules'] || '[]',
     },

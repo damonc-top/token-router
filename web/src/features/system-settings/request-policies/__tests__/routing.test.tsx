@@ -207,6 +207,14 @@ it('editing a rule and retries saves one draft without dropping transforms or ex
     name: 'Session behavior',
   })
   expect(behavior).toHaveValue('prefer')
+  const preferIdle = within(dialog).getByRole('switch', {
+    name: 'Prefer idle channels for new sessions',
+  })
+  expect(preferIdle).not.toBeChecked()
+  expect(preferIdle).toHaveAccessibleDescription(
+    'New sessions prefer channels without active session bindings. When all channels are occupied, channel weights apply.'
+  )
+  await userEvent.click(preferIdle)
   await userEvent.selectOptions(behavior, 'strict')
   fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name/ }), {
     target: { value: 'Renamed session' },
@@ -229,6 +237,7 @@ it('editing a rule and retries saves one draft without dropping transforms or ex
   ).toMatchObject({
     name: 'Renamed session',
     session_mode: 'strict',
+    prefer_idle_channel: true,
     skip_retry_on_failure: false,
     include_using_group: false,
     param_override_template: { temperature: 0 },
@@ -446,6 +455,7 @@ it('editing a rule without a session mode saves the chosen override with the ret
   expect(savedRule).toHaveProperty('session_mode', 'strict')
   expect(savedRule).toMatchObject({
     name: 'Renamed rule',
+    prefer_idle_channel: false,
     skip_retry_on_failure: false,
     include_using_group: false,
     param_override_template: { temperature: 0 },
@@ -537,6 +547,24 @@ it('a new blank rule inherits the global default', async () => {
       name: 'Session behavior',
     })
   ).toHaveValue('inherit')
+  expect(
+    within(screen.getByRole('dialog')).getByRole('switch', {
+      name: 'Prefer idle channels for new sessions',
+    })
+  ).toBeChecked()
+})
+
+it('missing session lifetime uses the thirty-minute default', async () => {
+  delete currentOptions['channel_affinity_setting.default_ttl_seconds']
+  show()
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Affinity cache settings' })
+  )
+  expect(
+    screen.getByRole('spinbutton', {
+      name: 'Default session lifetime (seconds)',
+    })
+  ).toHaveValue(1800)
 })
 
 it('refreshing settings preserves unsaved rule and retry edits', async () => {
@@ -693,6 +721,15 @@ it('the empty state can fill templates without saving them to the server', async
   expect(screen.getByRole('table')).toHaveTextContent('claude cli trace')
   expect(screen.queryByText('No rules yet')).not.toBeInTheDocument()
   expect(api.patch).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('tab', { name: 'JSON' }))
+  const editor = await screen.findByRole('textbox', { name: 'Rules JSON' })
+  const templates = JSON.parse((editor as HTMLTextAreaElement).value)
+  expect(templates).toHaveLength(3)
+  expect(
+    templates.every(
+      (rule: { prefer_idle_channel?: boolean }) => rule.prefer_idle_channel
+    )
+  ).toBe(true)
 })
 
 it('long rule fields stay in a keyboard-scrollable table and reveal the full name on focus', async () => {

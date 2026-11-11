@@ -1,9 +1,9 @@
 package model
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -120,9 +120,43 @@ func GetRandomSatisfiedChannel(
 	retry int,
 	filters []dto.ChannelFilter,
 ) (*Channel, error) {
-	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
 		return GetChannel(group, model, retry, filters)
+	}
+	candidates, err := GetWeightedChannelCandidates(group, model, retry, filters)
+	if err != nil || len(candidates) == 0 {
+		return nil, err
+	}
+	totalWeight := 0
+	for _, candidate := range candidates {
+		totalWeight += candidate.Weight
+	}
+	randomWeight := rand.Intn(totalWeight)
+	for _, candidate := range candidates {
+		randomWeight -= candidate.Weight
+		if randomWeight < 0 {
+			return CacheGetChannel(candidate.ChannelID)
+		}
+	}
+	return nil, fmt.Errorf("channel not found")
+}
+
+type WeightedChannel struct {
+	ChannelID int
+	Weight    int
+}
+
+func GetWeightedChannelCandidates(group, model string, retry int, filters []dto.ChannelFilter) ([]WeightedChannel, error) {
+	if !common.MemoryCacheEnabled {
+		abilities, err := getChannelAbilities(group, model, retry, filters)
+		if err != nil {
+			return nil, err
+		}
+		candidates := make([]WeightedChannel, 0, len(abilities))
+		for _, ability := range abilities {
+			candidates = append(candidates, WeightedChannel{ChannelID: ability.ChannelId, Weight: int(ability.Weight) + 10})
+		}
+		return candidates, nil
 	}
 
 	channelSyncLock.RLock()
@@ -155,23 +189,22 @@ func GetRandomSatisfiedChannel(
 		return nil, nil
 	}
 	if len(eligibleChannels) == 1 {
-		return eligibleChannels[0], nil
+		channel := eligibleChannels[0]
+		return []WeightedChannel{{ChannelID: channel.Id, Weight: max(channel.GetWeight(), 1)}}, nil
 	}
 
-	uniquePriorities := make(map[int]bool)
+	uniquePriorities := make(map[int64]bool)
 	for _, channel := range eligibleChannels {
-		uniquePriorities[int(channel.GetPriority())] = true
+		uniquePriorities[channel.GetPriority()] = true
 	}
-	var sortedUniquePriorities []int
+	var sortedUniquePriorities []int64
 	for priority := range uniquePriorities {
 		sortedUniquePriorities = append(sortedUniquePriorities, priority)
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(sortedUniquePriorities)))
+	slices.Sort(sortedUniquePriorities)
+	slices.Reverse(sortedUniquePriorities)
 
-	if retry >= len(uniquePriorities) {
-		retry = len(uniquePriorities) - 1
-	}
-	targetPriority := int64(sortedUniquePriorities[retry])
+	targetPriority := sortedUniquePriorities[min(retry, len(sortedUniquePriorities)-1)]
 
 	// get the priority for the given retry number
 	var sumWeight = 0
@@ -184,7 +217,7 @@ func GetRandomSatisfiedChannel(
 	}
 
 	if len(targetChannels) == 0 {
-		return nil, errors.New(fmt.Sprintf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority))
+		return nil, fmt.Errorf("no channel found, group: %s, model: %s, priority: %d", group, model, targetPriority)
 	}
 
 	// smoothing factor and adjustment
@@ -192,30 +225,21 @@ func GetRandomSatisfiedChannel(
 	smoothingAdjustment := 0
 
 	if sumWeight == 0 {
-		// when all channels have weight 0, set sumWeight to the number of channels and set smoothing adjustment to 100
 		// each channel's effective weight = 100
-		sumWeight = len(targetChannels) * 100
 		smoothingAdjustment = 100
 	} else if sumWeight/len(targetChannels) < 10 {
 		// when the average weight is less than 10, set smoothing factor to 100
 		smoothingFactor = 100
 	}
 
-	// Calculate the total weight of all channels up to endIdx
-	totalWeight := sumWeight * smoothingFactor
-
-	// Generate a random value in the range [0, totalWeight)
-	randomWeight := rand.Intn(totalWeight)
-
-	// Find a channel based on its weight
+	candidates := make([]WeightedChannel, 0, len(targetChannels))
 	for _, channel := range targetChannels {
-		randomWeight -= channel.GetWeight()*smoothingFactor + smoothingAdjustment
-		if randomWeight < 0 {
-			return channel, nil
+		weight := channel.GetWeight()*smoothingFactor + smoothingAdjustment
+		if weight > 0 {
+			candidates = append(candidates, WeightedChannel{ChannelID: channel.Id, Weight: weight})
 		}
 	}
-	// return null if no channel is not found
-	return nil, errors.New("channel not found")
+	return candidates, nil
 }
 
 // GetNextSatisfiedChannel returns the next eligible channel by ascending ID.

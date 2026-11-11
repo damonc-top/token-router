@@ -19,15 +19,50 @@ if ([string]::IsNullOrWhiteSpace($Workspace)) {
 
 $workspace = (Resolve-Path -LiteralPath $Workspace).Path
 $logDir = Join-Path $workspace 'logs'
+$watchdogScript = Join-Path $workspace 'scripts\token-router-watchdog.ps1'
 $pidFile = Join-Path $logDir 'token-router-watchdog.pid'
 $stopped = $false
 
+function Test-WatchdogProcess {
+    param($Process)
+
+    if ($null -eq $Process -or $Process.Name -notin @('powershell.exe', 'pwsh.exe') -or
+        [string]::IsNullOrWhiteSpace($Process.CommandLine)) {
+        return $false
+    }
+    $tokens = @([regex]::Matches($Process.CommandLine, '"(?:\\.|[^"\\])*"|\S+') | ForEach-Object { $_.Value.Trim('"') })
+    for ($i = 1; $i -lt $tokens.Count; $i++) {
+        $argument = $tokens[$i]
+        if ('-Command'.StartsWith($argument, [StringComparison]::OrdinalIgnoreCase) -or
+            '-CommandWithArgs'.StartsWith($argument, [StringComparison]::OrdinalIgnoreCase) -or
+            '-EncodedCommand'.StartsWith($argument, [StringComparison]::OrdinalIgnoreCase)) {
+            return $false
+        }
+        if ($argument -ieq '-File' -or $argument -ieq '-f') {
+            if ($i + 1 -ge $tokens.Count -or -not [IO.Path]::IsPathRooted($tokens[$i + 1])) {
+                return $false
+            }
+            if (-not [string]::Equals([IO.Path]::GetFullPath($tokens[$i + 1]), $watchdogScript, [StringComparison]::OrdinalIgnoreCase)) {
+                return $false
+            }
+            for ($j = $i + 2; $j -lt $tokens.Count; $j++) {
+                if ($tokens[$j] -ieq '-Workspace') {
+                    return $j + 1 -lt $tokens.Count -and
+                        [string]::Equals([IO.Path]::GetFullPath($tokens[$j + 1]), $workspace, [StringComparison]::OrdinalIgnoreCase)
+                }
+            }
+            return $true
+        }
+    }
+    return $false
+}
+
 if (Test-Path -LiteralPath $pidFile) {
-    $existingPidText = (Get-Content -LiteralPath $pidFile -Raw).Trim()
+    $existingPidText = Get-Content -LiteralPath $pidFile -Raw -ErrorAction SilentlyContinue
     $existingPid = 0
     if ([int]::TryParse($existingPidText, [ref]$existingPid)) {
-        $existing = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
-        if ($null -ne $existing) {
+        $existing = Get-CimInstance Win32_Process -Filter "ProcessId=$existingPid" -OperationTimeoutSec 5 -ErrorAction Stop
+        if (Test-WatchdogProcess $existing) {
             Stop-Process -Id $existingPid -Force
             $stopped = $true
             Write-Host "Stopped token-router watchdog PID $existingPid."
@@ -38,12 +73,7 @@ if (Test-Path -LiteralPath $pidFile) {
 
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe' OR Name='pwsh.exe'" |
     Where-Object {
-        $_.CommandLine -and
-        (
-            $_.CommandLine -match 'token-router-watchdog\.ps1' -or
-            $_.CommandLine -match 'cloudflared-watchdog\.ps1'
-        ) -and
-        $_.ProcessId -ne $PID
+        $_.ProcessId -ne $PID -and (Test-WatchdogProcess $_)
     } |
     ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue

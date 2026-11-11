@@ -200,6 +200,10 @@ $logDir = Join-Path $workspace 'logs'
 $backupDir = Join-Path $logDir 'deploy-backups'
 $apiPath = Join-Path $workspace 'token-router.exe'
 $cloudflaredPath = Join-Path $workspace 'bin\cloudflared.exe'
+$watchdogStart = Join-Path $workspace 'scripts\start-token-router-watchdog.ps1'
+$watchdogStop = Join-Path $workspace 'scripts\stop-token-router-watchdog.ps1'
+$watchdogScript = Join-Path $workspace 'scripts\token-router-watchdog.ps1'
+$powerShellPath = (Get-Process -Id $PID).Path
 $tunnelConfig = Join-Path $env:USERPROFILE '.cloudflared\config.yml'
 $metricsPorts = 20241..20245
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -207,7 +211,7 @@ $stagedApiPath = Join-Path $workspace "token-router-$stamp.next.exe"
 $backupApiPath = Join-Path $backupDir "token-router-$stamp.exe"
 $failedApiPath = Join-Path $backupDir "token-router-$stamp.failed.exe"
 
-foreach ($path in @($webDir, $cloudflaredPath, $tunnelConfig)) {
+foreach ($path in @($webDir, $cloudflaredPath, $tunnelConfig, $watchdogStart, $watchdogStop, $watchdogScript)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Required path does not exist: $path"
     }
@@ -269,68 +273,105 @@ if (-not $UseEnvironmentProxy) {
     }
 }
 
-Stop-ManagedProcess -FilePath $cloudflaredPath
-Stop-ManagedProcess -FilePath $apiPath
-
-try {
-    if (Test-Path -LiteralPath $apiPath) {
-        Move-Item -LiteralPath $apiPath -Destination $backupApiPath -ErrorAction Stop
+$watchdogTask = Get-ScheduledTask -TaskName 'TokenRouterWatchdog' -ErrorAction SilentlyContinue
+if ($null -ne $watchdogTask) {
+    $matchingActions = @($watchdogTask.Actions | Where-Object {
+        $_.WorkingDirectory -eq $workspace -and
+        $_.Arguments.IndexOf($watchdogScript, [StringComparison]::OrdinalIgnoreCase) -ge 0
+    })
+    if ($matchingActions.Count -eq 0) {
+        $watchdogTask = $null
     }
-    Move-Item -LiteralPath $stagedApiPath -Destination $apiPath -ErrorAction Stop
-} catch {
-    if (-not (Test-Path -LiteralPath $apiPath) -and (Test-Path -LiteralPath $backupApiPath)) {
-        Move-Item -LiteralPath $backupApiPath -Destination $apiPath -ErrorAction Stop
-    }
-    throw
 }
-
-$apiStdout = Join-Path $logDir "service-$stamp-stdout.log"
-$apiStderr = Join-Path $logDir "service-$stamp-stderr.log"
+$watchdogTaskDisabled = $false
+$deploymentCompleted = $false
 try {
-    $apiProcess = Start-ManagedProcess `
-        -FilePath $apiPath `
-        -Arguments @('--log-dir', $logDir) `
-        -WorkingDirectory $workspace `
-        -StandardOutputPath $apiStdout `
-        -StandardErrorPath $apiStderr `
-        -Environment $processEnvironment
-    Wait-ForHttpStatus -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSeconds 60
-} catch {
-    $startupError = $_
-    Stop-ManagedProcess -FilePath $apiPath
-    if (Test-Path -LiteralPath $apiPath) {
-        Move-Item -LiteralPath $apiPath -Destination $failedApiPath -ErrorAction Stop
+    if ($null -ne $watchdogTask -and $watchdogTask.State -ne 'Disabled') {
+        Disable-ScheduledTask -InputObject $watchdogTask | Out-Null
+        $watchdogTaskDisabled = $true
+        Stop-ScheduledTask -InputObject $watchdogTask
     }
-    if (Test-Path -LiteralPath $backupApiPath) {
-        Move-Item -LiteralPath $backupApiPath -Destination $apiPath -ErrorAction Stop
-        $rollbackStdout = Join-Path $logDir "service-$stamp-rollback-stdout.log"
-        $rollbackStderr = Join-Path $logDir "service-$stamp-rollback-stderr.log"
-        $null = Start-ManagedProcess `
+    Invoke-ExternalCommand -FilePath $powerShellPath `
+        -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $watchdogStop, '-Workspace', $workspace) `
+        -Description 'Watchdog stop' -WorkingDirectory $workspace
+    Stop-ManagedProcess -FilePath $cloudflaredPath
+    Stop-ManagedProcess -FilePath $apiPath
+
+    try {
+        if (Test-Path -LiteralPath $apiPath) {
+            Move-Item -LiteralPath $apiPath -Destination $backupApiPath -ErrorAction Stop
+        }
+        Move-Item -LiteralPath $stagedApiPath -Destination $apiPath -ErrorAction Stop
+    } catch {
+        if (-not (Test-Path -LiteralPath $apiPath) -and (Test-Path -LiteralPath $backupApiPath)) {
+            Move-Item -LiteralPath $backupApiPath -Destination $apiPath -ErrorAction Stop
+        }
+        throw
+    }
+
+    $apiStdout = Join-Path $logDir "service-$stamp-stdout.log"
+    $apiStderr = Join-Path $logDir "service-$stamp-stderr.log"
+    try {
+        $apiProcess = Start-ManagedProcess `
             -FilePath $apiPath `
             -Arguments @('--log-dir', $logDir) `
             -WorkingDirectory $workspace `
-            -StandardOutputPath $rollbackStdout `
-            -StandardErrorPath $rollbackStderr `
+            -StandardOutputPath $apiStdout `
+            -StandardErrorPath $apiStderr `
             -Environment $processEnvironment
         Wait-ForHttpStatus -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSeconds 60
+    } catch {
+        $startupError = $_
+        Stop-ManagedProcess -FilePath $apiPath
+        if (Test-Path -LiteralPath $apiPath) {
+            Move-Item -LiteralPath $apiPath -Destination $failedApiPath -ErrorAction Stop
+        }
+        if (Test-Path -LiteralPath $backupApiPath) {
+            Move-Item -LiteralPath $backupApiPath -Destination $apiPath -ErrorAction Stop
+            $rollbackStdout = Join-Path $logDir "service-$stamp-rollback-stdout.log"
+            $rollbackStderr = Join-Path $logDir "service-$stamp-rollback-stderr.log"
+            $null = Start-ManagedProcess `
+                -FilePath $apiPath `
+                -Arguments @('--log-dir', $logDir) `
+                -WorkingDirectory $workspace `
+                -StandardOutputPath $rollbackStdout `
+                -StandardErrorPath $rollbackStderr `
+                -Environment $processEnvironment
+            Wait-ForHttpStatus -Uri 'http://127.0.0.1:3000/api/status' -TimeoutSeconds 60
+        }
+        throw $startupError
     }
-    throw $startupError
+
+    $tunnelStdout = Join-Path $logDir "cloudflared-$stamp-stdout.log"
+    $tunnelStderr = Join-Path $logDir "cloudflared-$stamp-stderr.log"
+    $tunnelConfigContents = Get-Content -LiteralPath $tunnelConfig -Raw
+    $tunnelMatch = [regex]::Match($tunnelConfigContents, '(?m)^\s*tunnel:\s*(\S+)\s*$')
+    if (-not $tunnelMatch.Success) {
+        throw "Unable to read the tunnel ID from $tunnelConfig."
+    }
+    $tunnelProcess = Start-ManagedProcess `
+        -FilePath $cloudflaredPath `
+        -Arguments @('--config', $tunnelConfig, '--protocol', 'http2', 'tunnel', 'run', $tunnelMatch.Groups[1].Value) `
+        -WorkingDirectory $workspace `
+        -StandardOutputPath $tunnelStdout `
+        -StandardErrorPath $tunnelStderr `
+        -Environment $processEnvironment
+    Wait-ForTunnelConnection -MetricsPorts $metricsPorts -TimeoutSeconds 60
+    $deploymentCompleted = $true
+} finally {
+    try {
+        if ($watchdogTaskDisabled) {
+            Enable-ScheduledTask -InputObject $watchdogTask | Out-Null
+        }
+        Invoke-ExternalCommand -FilePath $powerShellPath `
+            -Arguments @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $watchdogStart, '-Workspace', $workspace, '-TunnelConfig', $tunnelConfig) `
+            -Description 'Watchdog start' -WorkingDirectory $workspace
+    } catch {
+        if ($deploymentCompleted) {
+            throw
+        }
+        Write-Warning "Watchdog recovery failed: $($_.Exception.Message)"
+    }
 }
 
-$tunnelStdout = Join-Path $logDir "cloudflared-$stamp-stdout.log"
-$tunnelStderr = Join-Path $logDir "cloudflared-$stamp-stderr.log"
-$tunnelConfigContents = Get-Content -LiteralPath $tunnelConfig -Raw
-$tunnelMatch = [regex]::Match($tunnelConfigContents, '(?m)^\s*tunnel:\s*(\S+)\s*$')
-if (-not $tunnelMatch.Success) {
-    throw "Unable to read the tunnel ID from $tunnelConfig."
-}
-$tunnelProcess = Start-ManagedProcess `
-    -FilePath $cloudflaredPath `
-    -Arguments @('--config', $tunnelConfig, '--protocol', 'http2', 'tunnel', 'run', $tunnelMatch.Groups[1].Value) `
-    -WorkingDirectory $workspace `
-    -StandardOutputPath $tunnelStdout `
-    -StandardErrorPath $tunnelStderr `
-    -Environment $processEnvironment
-Wait-ForTunnelConnection -MetricsPorts $metricsPorts -TimeoutSeconds 60
-
-Write-Host "Deployment complete. token-router PID=$($apiProcess.Id), cloudflared PID=$($tunnelProcess.Id)."
+Write-Host "Deployment complete. token-router PID=$($apiProcess.Id), cloudflared PID=$($tunnelProcess.Id); watchdog ready."

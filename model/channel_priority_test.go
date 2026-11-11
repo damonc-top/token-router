@@ -81,12 +81,15 @@ func TestChannelPriorityDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			sqlDB.SetMaxOpenConns(1)
 			previousDB, previousType := DB, common.MainDatabaseType()
+			previousMemoryCache := common.MemoryCacheEnabled
 			DB = db
+			common.MemoryCacheEnabled = false
 			common.SetMainDatabaseType(common.DatabaseType(dialect))
 			initCol()
 			t.Cleanup(func() {
 				require.NoError(t, db.Migrator().DropTable(&Ability{}, &Channel{}))
 				DB = previousDB
+				common.MemoryCacheEnabled = previousMemoryCache
 				common.SetMainDatabaseType(previousType)
 				initCol()
 				require.NoError(t, sqlDB.Close())
@@ -113,6 +116,15 @@ func TestChannelPriorityDatabaseMatrix(t *testing.T) {
 					require.NoError(t, db.Create(&Ability{Group: group, Model: "test", ChannelId: channel.Id, Priority: channel.Priority, Weight: uint(*channel.Weight), Enabled: true}).Error)
 				}
 			}
+			candidates, err := GetWeightedChannelCandidates("default", "test", 0, nil)
+			require.NoError(t, err)
+			assert.Equal(t, []WeightedChannel{{ChannelID: channels[0].Id, Weight: 21}}, candidates)
+			candidates, err = GetWeightedChannelCandidates("default", "test", 1, nil)
+			require.NoError(t, err)
+			assert.Equal(t, []WeightedChannel{
+				{ChannelID: channels[2].Id, Weight: 43},
+				{ChannelID: channels[1].Id, Weight: 32},
+			}, candidates)
 			initial, err := GetChannelPriorityOrder()
 			require.NoError(t, err)
 			move := ChannelPriorityMove{Revision: initial.Revision, ID: channels[3].Id, TargetID: channels[1].Id, Position: "before", Preview: true}

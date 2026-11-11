@@ -238,6 +238,7 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 }
 
 func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState, create responsesWSCreateRequest) (apiErr *types.NewAPIError) {
+	defer service.ReleaseChannelAffinityReservation(c)
 	policy := service.RequestPolicy(c)
 	modelName := create.Request.Model
 	started := time.Now()
@@ -276,6 +277,8 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 		if apiErr = s.restoreConnectionContext(c, modelName); apiErr != nil {
 			return apiErr
 		}
+		service.GetPreferredChannelByAffinity(c, modelName, common.GetContextKeyString(c, appconstant.ContextKeyUsingGroup))
+		service.MoveChannelAffinityReservation(c, s.lockedChannelID)
 		info = relaycommon.GenRelayInfoResponses(c, &create.Request)
 		info.IsStream = true
 		common.SetContextKey(c, appconstant.ContextKeyIsStream, true)
@@ -479,6 +482,9 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
 				state.terminal = &incoming
 				ConsumeResponsesQuota(c, info, accumulator.Finish())
+				if event.Type == "response.completed" || event.Type == "response.done" {
+					service.RecordChannelAffinity(c, s.lockedChannelID)
+				}
 				return nil
 			}
 			if err := s.writeClient(incoming.kind, incoming.body); err != nil {

@@ -15,8 +15,9 @@ type ChannelAffinityRule struct {
 	UserAgentInclude []string                   `json:"user_agent_include,omitempty"`
 	KeySources       []ChannelAffinityKeySource `json:"key_sources"`
 
-	ValueRegex string `json:"value_regex"`
-	TTLSeconds int    `json:"ttl_seconds"`
+	ValueRegex        string `json:"value_regex"`
+	TTLSeconds        int    `json:"ttl_seconds"`
+	PreferIdleChannel bool   `json:"prefer_idle_channel,omitempty"`
 
 	ParamOverrideTemplate map[string]any `json:"param_override_template,omitempty"`
 
@@ -119,7 +120,7 @@ var channelAffinitySetting = ChannelAffinitySetting{
 	SwitchOnSuccess:       true,
 	KeepOnChannelDisabled: false,
 	MaxEntries:            100_000,
-	DefaultTTLSeconds:     3600,
+	DefaultTTLSeconds:     1800,
 	Rules: []ChannelAffinityRule{
 		{
 			Name:       "codex cli trace",
@@ -130,6 +131,7 @@ var channelAffinitySetting = ChannelAffinitySetting{
 			},
 			ValueRegex:            "",
 			TTLSeconds:            0,
+			PreferIdleChannel:     true,
 			ParamOverrideTemplate: buildCodexPassHeaderTemplate(),
 			SkipRetryOnFailure:    true,
 			IncludeUsingGroup:     true,
@@ -148,6 +150,7 @@ var channelAffinitySetting = ChannelAffinitySetting{
 			},
 			ValueRegex:            "",
 			TTLSeconds:            0,
+			PreferIdleChannel:     true,
 			ParamOverrideTemplate: buildPassHeaderTemplate(claudeCliPassThroughHeaders),
 			SkipRetryOnFailure:    true,
 			IncludeUsingGroup:     true,
@@ -172,6 +175,7 @@ var channelAffinitySetting = ChannelAffinitySetting{
 			},
 			ValueRegex:         "",
 			TTLSeconds:         0,
+			PreferIdleChannel:  true,
 			SkipRetryOnFailure: false,
 			IncludeUsingGroup:  true,
 			IncludeRuleName:    true,

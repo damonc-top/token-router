@@ -40,7 +40,7 @@ const (
 
 var (
 	channelAffinityCacheOnce sync.Once
-	channelAffinityCache     *cachex.HybridCache[int]
+	channelAffinityCache     *channelAffinityStore
 
 	channelAffinityUsageCacheStatsOnce  sync.Once
 	channelAffinityUsageCacheStatsCache *cachex.HybridCache[ChannelAffinityUsageCacheCounters]
@@ -49,19 +49,20 @@ var (
 )
 
 type channelAffinityMeta struct {
-	CacheKey       string
-	TTLSeconds     int
-	RuleName       string
-	SkipRetry      bool
-	ParamTemplate  map[string]any
-	KeySourceType  string
-	KeySourceKey   string
-	KeySourcePath  string
-	KeyHint        string
-	KeyFingerprint string
-	UsingGroup     string
-	ModelName      string
-	RequestPath    string
+	CacheKey          string
+	TTLSeconds        int
+	RuleName          string
+	SkipRetry         bool
+	ParamTemplate     map[string]any
+	KeySourceType     string
+	KeySourceKey      string
+	KeySourcePath     string
+	KeyHint           string
+	KeyFingerprint    string
+	UsingGroup        string
+	ModelName         string
+	RequestPath       string
+	PreferIdleChannel bool
 }
 
 type ChannelAffinityStatsContext struct {
@@ -86,32 +87,14 @@ type ChannelAffinityCacheStats struct {
 	CacheAlgo     string         `json:"cache_algo"`
 }
 
-func getChannelAffinityCache() *cachex.HybridCache[int] {
+func getChannelAffinityCache() *channelAffinityStore {
 	channelAffinityCacheOnce.Do(func() {
 		setting := operation_setting.GetChannelAffinitySetting()
 		capacity := setting.MaxEntries
 		if capacity <= 0 {
 			capacity = 100_000
 		}
-		defaultTTLSeconds := setting.DefaultTTLSeconds
-		if defaultTTLSeconds <= 0 {
-			defaultTTLSeconds = 3600
-		}
-
-		channelAffinityCache = cachex.NewHybridCache[int](cachex.HybridCacheConfig[int]{
-			Namespace: cachex.Namespace(channelAffinityCacheNamespace),
-			Redis:     common.RDB,
-			RedisEnabled: func() bool {
-				return common.RedisEnabled && common.RDB != nil
-			},
-			RedisCodec: cachex.IntCodec{},
-			Memory: func() *hot.HotCache[string, int] {
-				return hot.NewHotCache[string, int](hot.LRU, capacity).
-					WithTTL(time.Duration(defaultTTLSeconds) * time.Second).
-					WithJanitor().
-					Build()
-			},
-		})
+		channelAffinityCache = newChannelAffinityStore(capacity)
 	})
 	return channelAffinityCache
 }
@@ -603,19 +586,20 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 		state.SessionMode, state.SessionModeSource = EffectiveSessionMode(setting, rule)
 		state.RuleName = rule.Name
 		setChannelAffinityContext(c, channelAffinityMeta{
-			CacheKey:       cacheKeyFull,
-			TTLSeconds:     ttlSeconds,
-			RuleName:       rule.Name,
-			SkipRetry:      state.SessionMode == "strict",
-			ParamTemplate:  cloneStringAnyMap(rule.ParamOverrideTemplate),
-			KeySourceType:  strings.TrimSpace(usedSource.Type),
-			KeySourceKey:   strings.TrimSpace(usedSource.Key),
-			KeySourcePath:  strings.TrimSpace(usedSource.Path),
-			KeyHint:        buildChannelAffinityKeyHint(affinityValue),
-			KeyFingerprint: affinityFingerprint(affinityValue),
-			UsingGroup:     usingGroup,
-			ModelName:      modelName,
-			RequestPath:    path,
+			CacheKey:          cacheKeyFull,
+			TTLSeconds:        ttlSeconds,
+			RuleName:          rule.Name,
+			SkipRetry:         state.SessionMode == "strict",
+			ParamTemplate:     cloneStringAnyMap(rule.ParamOverrideTemplate),
+			KeySourceType:     strings.TrimSpace(usedSource.Type),
+			KeySourceKey:      strings.TrimSpace(usedSource.Key),
+			KeySourcePath:     strings.TrimSpace(usedSource.Path),
+			KeyHint:           buildChannelAffinityKeyHint(affinityValue),
+			KeyFingerprint:    affinityFingerprint(affinityValue),
+			UsingGroup:        usingGroup,
+			ModelName:         modelName,
+			RequestPath:       path,
+			PreferIdleChannel: rule.PreferIdleChannel,
 		})
 
 		state.AddEvent(PolicyEvent{Decision: PolicyDecision{Action: "match", Reason: "session_rule_matched", Source: "session_rule"}})
@@ -625,6 +609,7 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 		cache := getChannelAffinityCache()
 		channelID, found, err := cache.Get(cacheKeySuffix)
 		if err != nil {
+			c.Set("channel_affinity_balance_unavailable", true)
 			common.SysError(common.LogText("channel affinity cache get failed: key=%s, err=%v", cacheKeyFull, err))
 			return 0, false
 		}
@@ -663,19 +648,14 @@ func ClearCurrentChannelAffinityCache(c *gin.Context) bool {
 		return false
 	}
 
-	cache := getChannelAffinityCache()
-	deleted, err := cache.DeleteMany([]string{cacheKey})
+	deleted, err := deleteChannelAffinityForRequest(c, cacheKey)
 	if err != nil {
 		common.SysError(common.LogText("channel affinity cache delete current failed: err=%v", err))
 		return false
 	}
 	c.Set(ginKeyChannelAffinitySkipRetry, false)
-	for _, ok := range deleted {
-		if ok {
-			return true
-		}
-	}
-	return false
+	resetChannelAffinityReservation(c)
+	return deleted
 }
 
 func ShouldKeepChannelAffinityOnChannelDisabled() bool {
@@ -780,14 +760,15 @@ func TryInvalidateChannelAffinityOnError(c *gin.Context, err *types.NewAPIError)
 	}
 
 	// Either a hard upstream error, or transient retries exhausted — invalidate
-	cache := getChannelAffinityCache()
-	if _, err2 := cache.DeleteMany([]string{cacheKey}); err2 != nil {
+	deleted, err2 := deleteChannelAffinityForRequest(c, cacheKey)
+	if err2 != nil {
 		common.SysError(fmt.Sprintf("channel affinity cache delete failed: key=%s, err=%v", cacheKey, err2))
 	}
-	return true
+	resetChannelAffinityReservation(c)
+	return deleted
 }
 
-// InvalidateChannelAffinity unconditionally removes the affinity cache entry.
+// InvalidateChannelAffinity invalidates the current request's session binding.
 // Prefer TryInvalidateChannelAffinityOnError in retry loops.
 func InvalidateChannelAffinity(c *gin.Context) {
 	if c == nil {
@@ -797,10 +778,10 @@ func InvalidateChannelAffinity(c *gin.Context) {
 	if !ok || cacheKey == "" {
 		return
 	}
-	cache := getChannelAffinityCache()
-	if _, err := cache.DeleteMany([]string{cacheKey}); err != nil {
+	if _, err := deleteChannelAffinityForRequest(c, cacheKey); err != nil {
 		common.SysError(fmt.Sprintf("channel affinity cache delete failed: key=%s, err=%v", cacheKey, err))
 	}
+	resetChannelAffinityReservation(c)
 }
 
 func RecordChannelAffinity(c *gin.Context, channelID int) {
@@ -808,7 +789,11 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 		return
 	}
 	setting := operation_setting.GetChannelAffinitySetting()
-	if RequestPolicy(c).SessionMode == "off" {
+	state := RequestPolicy(c)
+	if state.SessionMode == "off" || (state.OutcomeRecorded || state.FinalLogged) && !state.Successful {
+		return
+	}
+	if c != nil && c.Request != nil && c.Request.Context().Err() != nil {
 		return
 	}
 	if setting == nil || !setting.Enabled {
@@ -827,10 +812,17 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 		ttlSeconds = setting.DefaultTTLSeconds
 	}
 	if ttlSeconds <= 0 {
-		ttlSeconds = 3600
+		ttlSeconds = 1800
 	}
 	cache := getChannelAffinityCache()
-	if err := cache.SetWithTTL(cacheKey, channelID, time.Duration(ttlSeconds)*time.Second); err != nil {
+	var err error
+	if reservation, ok := c.Get("channel_affinity_reservation"); ok && reservation != nil {
+		lease := reservation.(*channelAffinityReservation)
+		err = cache.Commit(lease.lease, channelID, time.Duration(ttlSeconds)*time.Second)
+	} else {
+		err = cache.SetWithTTL(cacheKey, channelID, time.Duration(ttlSeconds)*time.Second)
+	}
+	if err != nil {
 		common.SysError(common.LogText("channel affinity cache set failed: key=%s, err=%v", cacheKey, err))
 	}
 }

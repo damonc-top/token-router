@@ -345,7 +345,7 @@ describe('request policy settings', () => {
       screen.getByRole('spinbutton', {
         name: 'Default session lifetime (seconds)',
       })
-    ).toHaveValue(3600)
+    ).toHaveValue(1800)
     expect(api.put).not.toHaveBeenCalled()
   })
 

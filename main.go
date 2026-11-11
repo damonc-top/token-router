@@ -110,6 +110,9 @@ func main() {
 		go model.SyncChannelCache(common.SyncFrequency)
 	}
 	wsmanager.StartSubscriber(context.Background())
+	if err := service.InitChannelAffinityLoad(); err != nil {
+		common.SysError(common.LogText("channel affinity load initialization failed: %v", err))
+	}
 
 	// Warm pricing after channel cache initialization so Advanced Custom
 	// endpoint inference can read cached route settings on first request.
